@@ -1,0 +1,42 @@
+Sai Asritha Thati
+CSCE 5430 – Software Engineering
+Team: Falcons
+Deliverable 1
+
+Roles:
+- Front-End Implementation Lead
+- Testing Lead
+
+Deliverable 1 Contributions:
+
+1. Reviewed the proposed Lost and Found for Campus system.
+
+2. Participated in discussions regarding the frontend requirements
+   and expected user interface.
+
+3. Identified major frontend areas that will eventually be required:
+   - Lost/found item posting
+   - Search and filtering
+   - Item details
+   - Claim verification interface
+   - In-app messaging
+   - Map view
+   - User/admin interfaces
+
+4. Reviewed initial testing considerations for the system:
+   - Form validation
+   - Search and filter testing
+   - Claim verification workflow testing
+   - Authentication testing
+   - Frontend/backend integration testing
+   - Responsive interface testing
+
+5. Helped identify project risks, including:
+   - Scope creep
+   - Third-party service dependency
+   - Frontend/backend integration issues
+   - Responsive UI issues
+   - Insufficient testing time
+   - Uneven team contribution
+
+6. Assisted the team with Deliverable 1 proposal and risk planning.

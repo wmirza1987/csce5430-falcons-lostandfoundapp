@@ -1,0 +1,34 @@
+Sai Asritha Thati
+CSCE 5430 – Software Engineering
+Team: Falcons
+Deliverable 1
+
+Technology Exploration – Django (Python) + React
+
+Assigned Researchers:
+- Sai Asritha Thati
+- Sai Sathvika Potluri
+
+Advantages:
+- Python is widely taught and readable.
+- Django provides built-in features such as an admin panel, ORM,
+  and authentication that can speed up requirements-heavy CRUD applications.
+- Django has good documentation.
+- React provides a flexible component-based frontend.
+
+Disadvantages:
+- The stack requires coordinating two languages:
+  Python for the backend and JavaScript for the frontend.
+- The team has less collective Python experience than JavaScript.
+- Maintaining separate frontend and backend technology environments can
+  add integration complexity.
+
+Comparison with MERN:
+The team considered React + Node.js/Express because it allows JavaScript
+to be used across both the frontend and backend, has a large ecosystem,
+and supports rapid prototyping.
+
+Conclusion:
+Django + React is a strong option for a CRUD-based application, but the
+team's stronger JavaScript familiarity makes a MERN-style approach a
+simpler fit for the semester project.
