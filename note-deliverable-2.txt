@@ -1,0 +1,59 @@
+Team Falcons — CSCE 5430, Software Engineering, Fall 2026
+Note - Deliverable 2
+
+Deliverable: Deliverable II - Requirements Specifications, System Structure,
+             and Development Phase Plan
+Due Date:    September 28, 2026, 11:59 PM
+Prepared By: Waleed Mirza (Team Leader), on behalf of Team Falcons
+
+This file lists the names and repository locations of all files submitted
+for Deliverable 2, per the assignment instructions.
+
+------------------------------------------------------------
+1. DELIVERABLE 2 REPORT
+------------------------------------------------------------
+File:     Team_Falcons_-_Deliverable_2.docx
+Location: /reports/Team_Falcons_-_Deliverable_2.docx
+Also submitted directly to Canvas.
+
+Contains: project title, group name, and group members; system scope and
+stakeholders; system structure (diagram and subsystem descriptions);
+functional requirements; nonfunctional requirements; interface
+requirements; user stories and acceptance criteria; the three-phase
+development plan; the requirements traceability matrix; and the member
+contribution table.
+
+------------------------------------------------------------
+2. UPDATED MEETING MINUTES
+------------------------------------------------------------
+File:     meeting-minutes-2026-09-09.docx
+Location: /meeting-minutes/meeting-minutes-2026-09-09.docx
+Contains: Deliverable 2 kickoff meeting.
+
+File:     meeting-minutes-2026-09-16.docx
+Location: /meeting-minutes/meeting-minutes-2026-09-16.docx
+Contains: Deliverable 2 mid-point check-in meeting.
+
+File:     meeting-minutes-2026-09-25-deliverable-2-review.docx
+Location: /meeting-minutes/meeting-minutes-2026-09-25-deliverable-2-review.docx
+Contains: Deliverable 2 review meeting (final review before submission).
+
+------------------------------------------------------------
+3. THIS FILE
+------------------------------------------------------------
+File:     note-deliverable-2.txt
+Location: / (repository root)
+
+------------------------------------------------------------
+NOTE
+------------------------------------------------------------
+Items 1, 2, 6, and 7 from the assignment instructions (title/group/members,
+project description, member contribution table, and this note file) are
+contained in the Deliverable 2 report above. Items 3, 4, and 5 (README with
+directory structure, repository directory structure, and meeting minutes)
+are maintained directly in this repository, consistent with the approach
+used for Deliverable 1.
+
+Before committing: confirm the /reports and /meeting-minutes paths above
+match this repository's actual folder names, and update them here if they
+differ.
