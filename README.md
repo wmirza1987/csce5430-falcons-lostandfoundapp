@@ -95,7 +95,7 @@ git clone https://github.com/wmirza1987/csce5430-falcons-lostandfoundapp.git
 cd csce5430-falcons-lostandfoundapp
 
 # install API dependencies
-cd src/server
+cd src/backend
 npm install
 
 # install client dependencies
@@ -105,7 +105,7 @@ npm install
 
 ### Required Environment Variables
 
-Set these in a `.env` file in `src/server/` (never commit actual secret values — this file documents names only):
+Set these in a `.env` file in `src/backend/` (never commit actual secret values — this file documents names only):
 
 | Variable | Purpose |
 |---|---|
@@ -125,7 +125,7 @@ Set these in a `.env` file in `src/server/` (never commit actual secret values �
 ### Running Locally
 
 ```bash
-# from src/server
+# from src/backend
 npm run dev        # starts the API with hot reload
 
 # from src/client, in a separate terminal
@@ -135,7 +135,7 @@ npm run dev        # starts the React development server
 ### Running Tests
 
 ```bash
-# from src/server
+# from src/backend
 npm test           # runs the API test suite
 
 # from src/client
@@ -145,7 +145,7 @@ npm test           # runs the client test suite
 ### Deployment
 
 1. Push the `main` branch to GitHub.
-2. Deploy `src/server` to Render (or a similar free-tier host); set the environment variables listed above in the host's dashboard.
+2. Deploy `src/backend` to Render (or a similar free-tier host); set the environment variables listed above in the host's dashboard.
 3. Deploy `src/client` to Vercel (or a similar free-tier host); set `CLIENT_ORIGIN` on the API to the deployed client URL.
 4. Confirm the deployed client can reach the deployed API before demoing.
 
