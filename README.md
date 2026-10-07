@@ -107,20 +107,27 @@ npm install
 
 Set these in a `.env` file in `src/backend/` (never commit actual secret values — this file documents names only):
 
+#### Currently Used
+
 | Variable | Purpose |
 |---|---|
 | `PORT` | Port the Express API listens on |
 | `MONGODB_URI` | MongoDB Atlas connection string |
 | `JWT_SECRET` | Signing secret for authenticated sessions |
-| `JWT_EXPIRES_IN` | Session token expiration window |
-| `CAMPUS_EMAIL_DOMAINS` | Comma-separated allowed registration domains (e.g. `my.unt.edu,unt.edu`) |
+| `NODE_ENV` | `development` or `production` |
+
+#### Planned for Later Phases
+
+| Variable | Purpose |
+|---|---|
+| `JWT_EXPIRES_IN` | Configurable session token expiration window |
+| `CAMPUS_EMAIL_DOMAINS` | Configurable allowed campus email domains |
 | `SMTP_HOST` | Email provider host |
 | `SMTP_PORT` | Email provider port |
 | `SMTP_USER` | Email provider account username |
-| `SMTP_PASS` | Email provider account password or API key |
-| `EMAIL_FROM` | "From" address used on outgoing email |
-| `CLIENT_ORIGIN` | Deployed client URL, for CORS |
-| `NODE_ENV` | `development` or `production` |
+| `SMTP_PASS` | Email provider password or API key |
+| `EMAIL_FROM` | Sender address used for outgoing email |
+| `CLIENT_ORIGIN` | Deployed frontend URL used for CORS configuration |
 
 ### Running Locally
 
@@ -150,7 +157,39 @@ npm test           # runs the client test suite
 4. Confirm the deployed client can reach the deployed API before demoing.
 
 ---
+## Deliverable 3 Backend Status
 
+The current backend implementation includes:
+
+- MongoDB Atlas connection using Mongoose
+- UNT-domain user registration
+- Password hashing using bcrypt
+- JWT-based login and authentication
+- Protected user profile endpoint
+- Role-based authorization middleware
+- Lost and found listing creation
+- Listing updates
+- Soft deletion
+- Ownership protection
+- Public listing browsing
+- Keyword search and filtering
+- Date and location filters
+- Pagination with a maximum of 20 results per page
+- Jest and Supertest automated API tests
+
+The following features are planned for later implementation phases:
+
+- Full email verification workflow
+- Password reset
+- Complete admin/moderator workflows
+- Image upload and file validation
+- Matching engine
+- Notifications
+- Claim verification
+- Messaging
+- Campus map integration
+
+---
 ## Project Timeline
 
 | Deliverable | Due Date | Focus |
