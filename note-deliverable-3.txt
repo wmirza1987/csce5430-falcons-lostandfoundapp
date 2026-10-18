@@ -1,0 +1,81 @@
+TEAM FALCONS - DELIVERABLE 3 - NOTE ON SUBMITTED FILES
+Lost and Found for Campus, CSCE 5430, Software Engineering, Fall 2026
+
+This file lists the name and repository location of every file submitted for
+Deliverable 3, corresponding to the 15 required items in the Deliverable 3
+rubric. This file itself is placed at the top level of the repository.
+
+1. Requirements (Phase 1)
+   File: D3_Item01_Requirements_Phase1.docx
+   Location: /reports/deliverable-3/
+
+2. UML Design Package
+   File: D3_Item02_UML_Design_Phase1.docx
+   Location: /reports/deliverable-3/
+
+3. Coding and AI Usage Disclosure
+   File: D3_Coding_AI_Usage_Disclosure.docx
+   Location: /reports/deliverable-3/
+
+4. Test Cases (Unit Tests)
+   Files: D3_Item03_Test_Cases_Phase1.docx (narrative report, with the
+          complete 132 case catalog as a landscape appendix)
+          D3_Item03_Test_Cases_Phase1.xlsx (companion workbook for
+          tracking Pass/Fail results during execution)
+   Location: /reports/deliverable-3/
+
+5. User Manual
+   File: D3_User_Manual_Phase1.docx
+   Location: /reports/deliverable-3/
+
+6. Compilation and Run Instructions
+   File: D3_Compilation_Run_Instructions.docx
+   Location: /reports/deliverable-3/
+
+7. Peer Review Feedback
+   File: D3_Peer_Review_Feedback.docx
+   Location: /reports/deliverable-3/
+
+8. Reflection
+   File: D3_Reflection.docx
+   Location: /reports/deliverable-3/
+
+9. Member Contribution Table
+   File: D3_Member_Contribution_Table.docx
+   Location: /reports/deliverable-3/
+
+10. Updated Meeting Minutes
+   Files: meeting-minutes-2026-09-30-d3-planning.docx
+          meeting-minutes-2026-10-02-d3-catchup.docx
+   Location: /meeting-minutes/deliverable-3/
+
+11. Note-deliverable-3 File
+   File: note-deliverable-3.txt
+   Location: / (top level of repository, this file)
+
+12. Code Compiles and Runs
+   Source: Express/Node.js backend and React/Vite frontend
+   Location: /src/backend/, /src/frontend/
+   Status at time of this note: corrected source code has been placed in
+   the repository; a successful local run (npm install, npm run dev for
+   both projects, and npm test for the backend) has not yet been confirmed
+   and recorded. See D3_Compilation_Run_Instructions.docx.
+
+13. Code Functionalities Match Report
+   File: D3_Code_Functionalities_Match_Report.docx
+   Location: /reports/deliverable-3/
+
+14. Code in Correct Repository Folder
+   Source: Express/Node.js backend and React/Vite frontend
+   Location: /src/backend/, /src/frontend/
+
+15. Core Functionalities Document
+   File: inspection-code-falcons.docx
+   Location: / (top level of repository)
+
+Note on repository organization: items 1, 2, 3, 5, 6, 7, 8, 9, and 13 are
+placed under /reports/deliverable-3/ and item 10 under
+/meeting-minutes/deliverable-3/, consistent with the folder structure used
+for Deliverable 1 and Deliverable 2. These two deliverable-3 subfolders
+did not exist in the repository as of the last audit and need to be
+created when these files are uploaded.
