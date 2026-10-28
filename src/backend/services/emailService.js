@@ -30,12 +30,11 @@ function getTransporter() {
 
 async function sendMail({ to, subject, text }) {
   if (!isSmtpConfigured()) {
-    // Development fallback: no SMTP provider configured yet.
-    console.log("--- Email not sent (SMTP not configured) ---");
-    console.log(`To: ${to}`);
-    console.log(`Subject: ${subject}`);
-    console.log(text);
-    console.log("---------------------------------------------");
+    // Never log the recipient, subject, body, or links: they can contain
+    // verification/reset tokens or private notification content (NFR-PRIV-01).
+    console.log(
+      "Email not sent: SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS to deliver mail."
+    );
     return { delivered: false, reason: "smtp_not_configured" };
   }
 
@@ -49,6 +48,37 @@ async function sendMail({ to, subject, text }) {
   });
 
   return { delivered: true };
+}
+
+// Sends a non-token notification email. A failed attempt is retried once.
+// The caller treats failure as non-fatal so the underlying claim/listing action
+// is never reversed (FR-COM-01).
+async function sendNotificationEmail({ to, subject, text }) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const result = await sendMail({ to, subject, text });
+
+      return {
+        delivered: result.delivered,
+        attempts: attempt,
+        reason: result.reason,
+      };
+    } catch (error) {
+      lastError = error;
+      console.error(
+        `Notification email attempt ${attempt} failed: ${error.message}`
+      );
+    }
+  }
+
+  return {
+    delivered: false,
+    attempts: 2,
+    reason: "smtp_error",
+    error: lastError?.message,
+  };
 }
 
 async function sendVerificationEmail(toEmail, rawToken) {
@@ -72,6 +102,9 @@ async function sendPasswordResetEmail(toEmail, rawToken) {
 }
 
 module.exports = {
+  isSmtpConfigured,
+  sendMail,
+  sendNotificationEmail,
   sendVerificationEmail,
   sendPasswordResetEmail,
 };

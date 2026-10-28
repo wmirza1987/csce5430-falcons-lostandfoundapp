@@ -1,0 +1,83 @@
+TEAM FALCONS - DELIVERABLE 4 - NOTE ON SUBMITTED FILES
+Lost and Found for Campus, CSCE 5430, Software Engineering, Fall 2026
+
+This file lists the name and repository location of every file submitted for
+Deliverable 4 (Phase 2 implementation). It is placed at the top level of the
+repository, as the assignment requires.
+
+1. Code (Phase 2 implementation)
+   Source: Express/Node.js backend and React/Vite frontend
+   Location: /src/backend/, /src/frontend/
+   Phase 2 files added or changed:
+     src/backend/models/Claim.js
+     src/backend/models/Match.js
+     src/backend/models/Notification.js
+     src/backend/models/User.js            (emailNotifications preference)
+     src/backend/models/Listing.js         (status transitions, fields)
+     src/backend/services/matchingService.js
+     src/backend/services/notificationService.js
+     src/backend/services/emailService.js
+     src/backend/controllers/claimController.js
+     src/backend/controllers/matchController.js
+     src/backend/controllers/notificationController.js
+     src/backend/controllers/listingController.js
+     src/backend/routes/claimRoutes.js
+     src/backend/routes/matchRoutes.js
+     src/backend/routes/notificationRoutes.js
+     src/backend/routes/listingRoutes.js
+     src/backend/app.js, src/backend/server.js
+     src/backend/tests/                     (7 suites, 32 tests)
+     src/frontend/src/pages/ListingDetail.jsx
+     src/frontend/src/pages/Notifications.jsx
+     src/frontend/src/components/, src/frontend/src/App.jsx
+   Setup, environment variables, and run/test commands: README.md at the
+   repository root and Section 6 of the report.
+   Note on location: this repository keeps all source under /src/backend and
+   /src/frontend, the same folders used for Phase 1 and Deliverable 3. The
+   Phase 2 code is therefore in the repository's designated source tree
+   rather than in a new "phase 2" folder. No code was duplicated.
+
+2. Report
+   File: Deliverable-4-Report.pdf
+   Location: /reports/deliverable-4/
+   Also provided: Deliverable-4-Report.docx (same content, editable)
+                  Deliverable-4-Report.md (markdown source)
+   Format: letter, 11 pt body, single spacing, 8 pages (requirement: 6-10).
+   The single report contains all required items:
+     a. Requirements ................................. Section 1
+     b. UML design (class, sequence, use case with
+        one normal and one error case) ................ Section 2
+     c. Coding and AI usage report ................... Section 3
+     d. Test cases (unit tests) ...................... Section 4
+     e. User manual .................................. Section 5
+     f. Compilation and run instructions ............. Section 6
+     g. Code inspection feedback ..................... Section 7
+     h. Reflection ................................... Section 8
+     i. Member contribution table .................... Section 9
+   Diagram images used in Section 2:
+     Location: /reports/deliverable-4/assets/
+     Files: d4-class-diagram.png
+            d4-sequence-diagram.png
+            d4-usecase-diagram.png
+
+3. Updated meeting minutes
+   Location: /meeting-minutes/
+   Status: PENDING. No Deliverable 4 planning or review meeting has been
+   minuted yet, so no new minutes file is submitted here rather than
+   fabricating one. The most recent minutes on file are:
+     /meeting-minutes/deliverable-3/D3 Item10 meeting-minutes-2026-09-30-d3-planning.docx
+     /meeting-minutes/deliverable-3/D3 Item10 meeting-minutes-2026-10-02-d3-catchup.docx
+     /meeting-minutes/deliverable-2/meeting-minutes-2026-09-25-deliverable-2-review.docx
+   The Deliverable 4 minutes will be added under
+   /meeting-minutes/deliverable-4/ before submission and will not be
+   duplicated inside the report, per the assignment instructions.
+
+Note on Section 7 of the report: the Phase 2 code-inspection session had not
+been held when this note was written. Section 7 records the feedback carried
+forward from the Deliverable 3 inspection and the Deliverable 2 workshop, and
+states that the Phase 2 inspection remarks will be appended once received. No
+feedback was invented.
+
+Note on the contribution table: the percentages in Section 9 (30/30/20/20)
+reflect the roles described in that table and are pending confirmation by all
+four members.

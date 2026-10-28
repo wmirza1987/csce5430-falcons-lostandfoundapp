@@ -21,6 +21,20 @@ const listingSchema = new mongoose.Schema(
       trim: true,
     },
 
+    brand: {
+      type: String,
+      trim: true,
+      maxlength: 60,
+      default: "",
+    },
+
+    color: {
+      type: String,
+      trim: true,
+      maxlength: 40,
+      default: "",
+    },
+
     description: {
       type: String,
       required: true,
@@ -85,6 +99,9 @@ const listingSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+listingSchema.index({ isDeleted: 1, status: 1, type: 1, createdAt: -1 });
+listingSchema.index({ category: 1, "location.building": 1, "location.zone": 1 });
 
 listingSchema.pre("validate", function () {
   if (this.type === "found" && this.images.length === 0) {

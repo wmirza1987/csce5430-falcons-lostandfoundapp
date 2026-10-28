@@ -51,7 +51,7 @@ function Register() {
     if (Object.keys(errors).length > 0) return;
 
     try {
-      const response = await fetch(apiUrl("/api/auth/register"), {
+      const response = await fetch(apiUrl("/api/v1/auth/register"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

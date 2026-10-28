@@ -166,3 +166,98 @@ button:hover {
   border: 1px solid #ddd;
   border-radius: 4px;
 }
+
+/* Phase 2: matches, claims, notifications, and status badges. */
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.8em;
+  font-weight: 700;
+  background: #e8eef8;
+  color: #23456f;
+}
+
+.status-active,
+.status-approved {
+  background: #e3f4e8;
+  color: #1f6b36;
+}
+
+.status-pending,
+.status-pending_return {
+  background: #fff3d6;
+  color: #7a5200;
+}
+
+.status-resolved {
+  background: #e8e8e8;
+  color: #444;
+}
+
+.status-rejected,
+.status-closed {
+  background: #fbe4e6;
+  color: #8b1d2c;
+}
+
+.match-card,
+.claim-card,
+.notification-card {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.match-card .score {
+  color: #1f6b36;
+  font-weight: 700;
+}
+
+.private-panel {
+  background: #fff8e8;
+  border: 1px solid #e5c97a;
+  border-radius: 6px;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.action-row input {
+  max-width: 240px;
+}
+
+.hint {
+  color: #666;
+  font-size: 0.9em;
+}
+
+.notification-card.is-unread {
+  border-left: 5px solid #2f5d9f;
+}
+
+.notification-card.is-read {
+  opacity: 0.8;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  font-weight: 400;
+}
+
+.checkbox-row input {
+  width: auto;
+  margin: 0;
+}

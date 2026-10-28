@@ -1,7 +1,45 @@
 const Listing = require("../models/Listing");
 const { filesToImageUrls } = require("../middleware/uploadMiddleware");
+const {
+  refreshMatchesForListing,
+  removeMatchesForListing,
+} = require("../services/matchingService");
 
-// FR LIST 01, FR LIST 02, FR AUTH 01: create a Lost or Found listing.
+const MAX_PAGE_SIZE = 20;
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseSearchDate(value, fieldName) {
+  if (!value) {
+    return { date: null };
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return { error: `${fieldName} must be a valid date.` };
+  }
+
+  return { date };
+}
+
+function validationMessage(error) {
+  if (error?.name === "ValidationError") {
+    return Object.values(error.errors)
+      .map((item) => item.message)
+      .join(" ");
+  }
+
+  return "Please check the submitted fields.";
+}
+
+function logError(context, error) {
+  console.error(`${context}: ${error.message}`);
+}
+
+// FR-LIST-01, FR-LIST-02, FR-AUTH-01: create a Lost or Found listing.
 // Requires a verified email before a listing can be created.
 const createListing = async (req, res) => {
   try {
@@ -15,6 +53,8 @@ const createListing = async (req, res) => {
       type,
       title,
       category,
+      brand,
+      color,
       description,
       date,
       building,
@@ -28,6 +68,8 @@ const createListing = async (req, res) => {
       type,
       title,
       category,
+      brand,
+      color,
       description,
       date,
       location: { building, zone },
@@ -36,25 +78,32 @@ const createListing = async (req, res) => {
       createdBy: req.user._id,
     });
 
+    await refreshMatchesForListing(listing).catch((error) => {
+      logError("Unable to refresh matches after listing creation", error);
+    });
+
     return res.status(201).json({
       message: "Listing created successfully.",
       listing,
     });
   } catch (error) {
+    logError("Unable to create listing", error);
+
     return res.status(400).json({
-      message: "Unable to create listing.",
-      error: error.message,
+      message: validationMessage(error),
     });
   }
 };
 
-// FR SRCH 01, FR SRCH 02: public browse, search, and filter, paginated at 20 per page.
+// FR-SRCH-01, FR-SRCH-02: public browse, search, and filter, paginated at 20 per page.
 const getListings = async (req, res) => {
   try {
     const {
       search,
       type,
       category,
+      brand,
+      color,
       building,
       zone,
       startDate,
@@ -63,49 +112,89 @@ const getListings = async (req, res) => {
       limit = 20,
     } = req.query;
 
+    const start = parseSearchDate(startDate, "Start date");
+    const end = parseSearchDate(endDate, "End date");
+
+    if (start.error || end.error) {
+      return res.status(400).json({
+        message: start.error || end.error,
+      });
+    }
+
+    if (start.date && end.date && start.date > end.date) {
+      return res.status(400).json({
+        message: "Start date must be before or equal to end date.",
+      });
+    }
+
     const query = {
       isDeleted: false,
       status: "active",
     };
 
     if (type) {
+      if (!["lost", "found"].includes(type)) {
+        return res.status(400).json({
+          message: "Type must be either lost or found.",
+        });
+      }
+
       query.type = type;
     }
 
     if (category) {
-      query.category = category;
+      query.category = { $regex: new RegExp(`^${escapeRegExp(category)}$`, "i") };
+    }
+
+    if (brand) {
+      query.brand = { $regex: new RegExp(`^${escapeRegExp(brand)}$`, "i") };
+    }
+
+    if (color) {
+      query.color = { $regex: new RegExp(`^${escapeRegExp(color)}$`, "i") };
     }
 
     if (building) {
-      query["location.building"] = building;
+      query["location.building"] = {
+        $regex: new RegExp(`^${escapeRegExp(building)}$`, "i"),
+      };
     }
 
     if (zone) {
-      query["location.zone"] = zone;
+      query["location.zone"] = {
+        $regex: new RegExp(`^${escapeRegExp(zone)}$`, "i"),
+      };
     }
 
-    if (startDate || endDate) {
+    if (start.date || end.date) {
       query.date = {};
 
-      if (startDate) {
-        query.date.$gte = new Date(startDate);
+      if (start.date) {
+        query.date.$gte = start.date;
       }
 
-      if (endDate) {
-        query.date.$lte = new Date(endDate);
+      if (end.date) {
+        query.date.$lte = end.date;
       }
     }
 
-    if (search) {
+    if (search && String(search).trim()) {
+      const term = escapeRegExp(String(search).trim());
+
       query.$or = [
-        { title: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } },
-        { category: { $regex: search, $options: "i" } },
+        { title: { $regex: term, $options: "i" } },
+        { description: { $regex: term, $options: "i" } },
+        { category: { $regex: term, $options: "i" } },
+        { brand: { $regex: term, $options: "i" } },
+        { color: { $regex: term, $options: "i" } },
       ];
     }
 
     const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
-    const pageSize = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 20);
+    const pageSize = Math.min(
+      Math.max(parseInt(limit, 10) || MAX_PAGE_SIZE, 1),
+      MAX_PAGE_SIZE
+    );
 
     const total = await Listing.countDocuments(query);
 
@@ -123,16 +212,17 @@ const getListings = async (req, res) => {
       listings,
     });
   } catch (error) {
+    logError("Unable to retrieve listings", error);
+
     return res.status(500).json({
       message: "Unable to retrieve listings.",
-      error: error.message,
     });
   }
 };
 
 // Fetches one listing by id directly, instead of requiring the caller to
 // page through the full list. Private details are included only for the
-// listing's own owner, consistent with FR LIST 04 and NFR PRIV 01.
+// listing's own owner, consistent with FR-LIST-04 and NFR-PRIV-01.
 const getListingById = async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id)
@@ -146,7 +236,7 @@ const getListingById = async (req, res) => {
     }
 
     const isOwner =
-      req.user && listing.createdBy._id.toString() === req.user._id.toString();
+      req.user && listing.createdBy?._id.toString() === req.user._id.toString();
 
     const responseListing = listing.toObject();
 
@@ -156,14 +246,19 @@ const getListingById = async (req, res) => {
 
     return res.status(200).json({ listing: responseListing });
   } catch (error) {
-    return res.status(400).json({
+    if (error.name === "CastError") {
+      return res.status(400).json({ message: "Invalid listing id." });
+    }
+
+    logError("Unable to retrieve listing", error);
+
+    return res.status(500).json({
       message: "Unable to retrieve this listing.",
-      error: error.message,
     });
   }
 };
 
-// FR LIST 03: only the owner may edit their own Active listing.
+// FR-LIST-03: only the owner may edit their own Active listing.
 const updateListing = async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id).select("+privateDetails");
@@ -180,13 +275,20 @@ const updateListing = async (req, res) => {
       });
     }
 
+    if (listing.status !== "active") {
+      return res.status(409).json({
+        message: "Only an active listing can be edited.",
+      });
+    }
+
     const allowedFields = [
       "title",
       "category",
+      "brand",
+      "color",
       "description",
       "date",
       "privateDetails",
-      "status",
     ];
 
     allowedFields.forEach((field) => {
@@ -209,19 +311,24 @@ const updateListing = async (req, res) => {
 
     await listing.save();
 
+    await refreshMatchesForListing(listing).catch((error) => {
+      logError("Unable to refresh matches after listing update", error);
+    });
+
     return res.status(200).json({
       message: "Listing updated successfully.",
       listing,
     });
   } catch (error) {
+    logError("Unable to update listing", error);
+
     return res.status(400).json({
-      message: "Unable to update listing.",
-      error: error.message,
+      message: validationMessage(error),
     });
   }
 };
 
-// FR LIST 03: soft delete, preserving the record rather than removing it.
+// FR-LIST-03: soft delete, preserving the record rather than removing it.
 const deleteListing = async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
@@ -238,16 +345,27 @@ const deleteListing = async (req, res) => {
       });
     }
 
+    if (listing.status !== "active") {
+      return res.status(409).json({
+        message: "Only an active listing can be deleted.",
+      });
+    }
+
     listing.isDeleted = true;
     await listing.save();
+
+    await removeMatchesForListing(listing._id).catch((error) => {
+      logError("Unable to remove matches after listing deletion", error);
+    });
 
     return res.status(200).json({
       message: "Listing deleted successfully.",
     });
   } catch (error) {
+    logError("Unable to delete listing", error);
+
     return res.status(500).json({
       message: "Unable to delete listing.",
-      error: error.message,
     });
   }
 };

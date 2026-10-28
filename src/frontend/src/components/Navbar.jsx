@@ -18,7 +18,10 @@ function Navbar() {
         <Link to="/listings">Listings</Link>
 
         {token && (
-          <Link to="/listings/new">Create Listing</Link>
+          <>
+            <Link to="/listings/new">Create Listing</Link>
+            <Link to="/notifications">Notifications</Link>
+          </>
         )}
       </div>
 

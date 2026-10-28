@@ -13,6 +13,8 @@ function CreateListing() {
     type: "lost",
     title: "",
     category: "",
+    brand: "",
+    color: "",
     description: "",
     date: "",
     building: "",
@@ -23,6 +25,7 @@ function CreateListing() {
   const [images, setImages] = useState([]);
   const [fieldErrors, setFieldErrors] = useState({});
   const [formMessage, setFormMessage] = useState("");
+  const [preview, setPreview] = useState(false);
 
   const handleChange = (event) => {
     setFormData({
@@ -67,20 +70,29 @@ function CreateListing() {
     return errors;
   };
 
-  const handleSubmit = async (event) => {
+  const handlePreview = (event) => {
     event.preventDefault();
     setFormMessage("");
 
     const errors = validate();
     setFieldErrors((prev) => ({ ...prev, ...errors }));
+
     if (Object.keys(errors).length > 0) return;
 
+    setPreview(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const submitListing = async () => {
+    setFormMessage("");
     const token = localStorage.getItem("token");
 
     const body = new FormData();
     body.append("type", formData.type);
     body.append("title", formData.title);
     body.append("category", formData.category);
+    body.append("brand", formData.brand);
+    body.append("color", formData.color);
     body.append("description", formData.description);
     body.append("date", formData.date);
     body.append("building", formData.building);
@@ -89,7 +101,7 @@ function CreateListing() {
     images.forEach((file) => body.append("images", file));
 
     try {
-      const response = await fetch(apiUrl("/api/listings"), {
+      const response = await fetch(apiUrl("/api/v1/listings"), {
         method: "POST",
         headers: {
           // Content-Type is intentionally omitted: the browser sets the
@@ -109,18 +121,83 @@ function CreateListing() {
       setFormMessage("Listing created successfully.");
 
       setTimeout(() => {
-        navigate("/listings");
-      }, 1000);
+        navigate(`/listings/${data.listing._id}`);
+      }, 700);
     } catch (error) {
       setFormMessage("Unable to connect to the backend.");
     }
   };
 
+  if (preview) {
+    return (
+      <div>
+        <h1>Preview Listing</h1>
+        <p>
+          This is what visitors will see. Private identifying details are not
+          shown publicly.
+        </p>
+
+        <div className="listing-card">
+          <h2>{formData.title}</h2>
+          <p>
+            <strong>Type:</strong> {formData.type}
+          </p>
+          <p>
+            <strong>Category:</strong> {formData.category}
+          </p>
+          {formData.brand && (
+            <p>
+              <strong>Brand:</strong> {formData.brand}
+            </p>
+          )}
+          {formData.color && (
+            <p>
+              <strong>Color:</strong> {formData.color}
+            </p>
+          )}
+          <p>
+            <strong>Description:</strong> {formData.description}
+          </p>
+          <p>
+            <strong>Date:</strong> {formData.date}
+          </p>
+          <p>
+            <strong>Location:</strong> {formData.building}
+            {formData.zone ? `, ${formData.zone}` : ""}
+          </p>
+          <p>
+            <strong>Photos:</strong>{" "}
+            {images.length > 0
+              ? images.map((file) => file.name).join(", ")
+              : "None"}
+          </p>
+          {formData.privateDetails && (
+            <p>
+              <strong>Private identifying details:</strong> hidden from public
+              view
+            </p>
+          )}
+        </div>
+
+        <button type="button" onClick={() => setPreview(false)}>
+          Back to edit
+        </button>{" "}
+        <button type="button" onClick={submitListing}>
+          Confirm and Submit
+        </button>
+
+        {formMessage && (
+          <p role="alert" className="field-error">{formMessage}</p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
       <h1>Create Listing</h1>
 
-      <form onSubmit={handleSubmit} noValidate>
+      <form onSubmit={handlePreview} noValidate>
         <div>
           <label htmlFor="create-type">Type</label>
           <br />
@@ -166,6 +243,34 @@ function CreateListing() {
           {fieldErrors.category && (
             <p id="create-category-error" role="alert" className="field-error">{fieldErrors.category}</p>
           )}
+        </div>
+
+        <br />
+
+        <div>
+          <label htmlFor="create-brand">Brand (optional)</label>
+          <br />
+          <input
+            id="create-brand"
+            type="text"
+            name="brand"
+            value={formData.brand}
+            onChange={handleChange}
+          />
+        </div>
+
+        <br />
+
+        <div>
+          <label htmlFor="create-color">Color (optional)</label>
+          <br />
+          <input
+            id="create-color"
+            type="text"
+            name="color"
+            value={formData.color}
+            onChange={handleChange}
+          />
         </div>
 
         <br />
@@ -277,7 +382,7 @@ function CreateListing() {
 
         <br />
 
-        <button type="submit">Create Listing</button>
+        <button type="submit">Preview Listing</button>
       </form>
 
       {formMessage && (

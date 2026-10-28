@@ -9,6 +9,8 @@ function EditListing() {
   const [formData, setFormData] = useState({
     title: "",
     category: "",
+    brand: "",
+    color: "",
     description: "",
     date: "",
     building: "",
@@ -27,7 +29,7 @@ function EditListing() {
       try {
         // Fetches the listing directly by id, rather than paging through the
         // public list, so this works regardless of the listing's page or status.
-        const response = await fetch(apiUrl(`/api/listings/${id}`), {
+        const response = await fetch(apiUrl(`/api/v1/listings/${id}`), {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
 
@@ -43,6 +45,8 @@ function EditListing() {
         setFormData({
           title: listing.title || "",
           category: listing.category || "",
+          brand: listing.brand || "",
+          color: listing.color || "",
           description: listing.description || "",
           date: listing.date ? listing.date.substring(0, 10) : "",
           building: listing.location?.building || "",
@@ -76,6 +80,8 @@ function EditListing() {
     const body = new FormData();
     body.append("title", formData.title);
     body.append("category", formData.category);
+    body.append("brand", formData.brand);
+    body.append("color", formData.color);
     body.append("description", formData.description);
     body.append("date", formData.date);
     body.append("building", formData.building);
@@ -86,7 +92,7 @@ function EditListing() {
     images.forEach((file) => body.append("images", file));
 
     try {
-      const response = await fetch(apiUrl(`/api/listings/${id}`), {
+      const response = await fetch(apiUrl(`/api/v1/listings/${id}`), {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -148,6 +154,32 @@ function EditListing() {
             value={formData.category}
             onChange={handleChange}
             required
+          />
+        </div>
+
+        <br />
+
+        <div>
+          <label htmlFor="edit-brand">Brand (optional)</label>
+          <br />
+          <input
+            id="edit-brand"
+            name="brand"
+            value={formData.brand}
+            onChange={handleChange}
+          />
+        </div>
+
+        <br />
+
+        <div>
+          <label htmlFor="edit-color">Color (optional)</label>
+          <br />
+          <input
+            id="edit-color"
+            name="color"
+            value={formData.color}
+            onChange={handleChange}
           />
         </div>
 

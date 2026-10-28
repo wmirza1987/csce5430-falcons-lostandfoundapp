@@ -5,17 +5,25 @@ const {
   loginUser,
   forgotPassword,
   resetPassword,
+  updatePreferences,
 } = require("../controllers/authController");
 const { protect } = require("../middleware/authMiddleware");
 const { authorizeRoles } = require("../middleware/roleMiddleware");
+const { rateLimit } = require("../middleware/rateLimitMiddleware");
 
 const router = express.Router();
 
-router.post("/register", registerUser);
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: "Too many authentication attempts. Please try again later.",
+});
+
+router.post("/register", authLimiter, registerUser);
 router.get("/verify-email/:token", verifyEmail);
-router.post("/login", loginUser);
-router.post("/forgot-password", forgotPassword);
-router.post("/reset-password/:token", resetPassword);
+router.post("/login", authLimiter, loginUser);
+router.post("/forgot-password", authLimiter, forgotPassword);
+router.post("/reset-password/:token", authLimiter, resetPassword);
 
 router.get("/profile", protect, (req, res) => {
   res.status(200).json({
@@ -27,9 +35,12 @@ router.get("/profile", protect, (req, res) => {
       email: req.user.email,
       role: req.user.role,
       isEmailVerified: req.user.isEmailVerified,
+      emailNotifications: req.user.emailNotifications,
     },
   });
 });
+
+router.patch("/preferences", protect, updatePreferences);
 
 // Demonstrates FR AUTH 03 role enforcement. Full moderator/admin capabilities
 // are out of Phase 1 scope (Deliverable 2, Section 9.3); this confirms the

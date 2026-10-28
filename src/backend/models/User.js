@@ -58,6 +58,13 @@ const userSchema = new mongoose.Schema(
       default: true,
     },
 
+    // Optional email notifications (FR-COM-01). In-app notifications are
+    // always created; this only controls whether an email is also attempted.
+    emailNotifications: {
+      type: Boolean,
+      default: true,
+    },
+
     // Stored as a SHA-256 hash, never the raw token, consistent with NFR SEC 02.
     // The raw token is only ever held in memory long enough to email it.
     emailVerificationTokenHash: {
