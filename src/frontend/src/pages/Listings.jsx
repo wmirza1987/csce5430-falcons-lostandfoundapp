@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { apiUrl, API_BASE_URL } from "../config/api";
 
 function Listings() {
@@ -11,6 +11,8 @@ function Listings() {
   const [search, setSearch] = useState("");
   const [type, setType] = useState("");
   const [category, setCategory] = useState("");
+  const [brand, setBrand] = useState("");
+  const [color, setColor] = useState("");
   const [building, setBuilding] = useState("");
   const [zone, setZone] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -23,22 +25,37 @@ function Listings() {
   const currentUser = storedUser ? JSON.parse(storedUser) : null;
   const token = localStorage.getItem("token");
 
-  const loadListings = async () => {
+  const loadListings = async (overrides = {}) => {
     try {
+      const filters = {
+        search,
+        type,
+        category,
+        brand,
+        color,
+        building,
+        zone,
+        startDate,
+        endDate,
+        ...overrides,
+      };
+      const requestedPage = filters.page || page;
       const params = new URLSearchParams();
 
-      if (search) params.append("search", search);
-      if (type) params.append("type", type);
-      if (category) params.append("category", category);
-      if (building) params.append("building", building);
-      if (zone) params.append("zone", zone);
-      if (startDate) params.append("startDate", startDate);
-      if (endDate) params.append("endDate", endDate);
+      if (filters.search) params.append("search", filters.search);
+      if (filters.type) params.append("type", filters.type);
+      if (filters.category) params.append("category", filters.category);
+      if (filters.brand) params.append("brand", filters.brand);
+      if (filters.color) params.append("color", filters.color);
+      if (filters.building) params.append("building", filters.building);
+      if (filters.zone) params.append("zone", filters.zone);
+      if (filters.startDate) params.append("startDate", filters.startDate);
+      if (filters.endDate) params.append("endDate", filters.endDate);
 
-      params.append("page", page);
+      params.append("page", requestedPage);
       params.append("limit", 20);
 
-      const response = await fetch(apiUrl(`/api/listings?${params.toString()}`));
+      const response = await fetch(apiUrl(`/api/v1/listings?${params.toString()}`));
       const data = await response.json();
 
       if (!response.ok) {
@@ -70,16 +87,33 @@ function Listings() {
   };
 
   const handleClear = () => {
+    const cleared = {
+      search: "",
+      type: "",
+      category: "",
+      brand: "",
+      color: "",
+      building: "",
+      zone: "",
+      startDate: "",
+      endDate: "",
+    };
+
     setSearch("");
     setType("");
     setCategory("");
+    setBrand("");
+    setColor("");
     setBuilding("");
     setZone("");
     setStartDate("");
     setEndDate("");
+    setMessage("");
 
     if (page !== 1) {
       setPage(1);
+    } else {
+      loadListings(cleared);
     }
   };
 
@@ -93,7 +127,7 @@ function Listings() {
     }
 
     try {
-      const response = await fetch(apiUrl(`/api/listings/${listingId}`), {
+      const response = await fetch(apiUrl(`/api/v1/listings/${listingId}`), {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -158,6 +192,34 @@ function Listings() {
             value={category}
             onChange={(event) => setCategory(event.target.value)}
             placeholder="Example: Bags"
+          />
+        </div>
+
+        <br />
+
+        <div>
+          <label htmlFor="search-brand">Brand</label>
+          <br />
+          <input
+            id="search-brand"
+            type="text"
+            value={brand}
+            onChange={(event) => setBrand(event.target.value)}
+            placeholder="Example: Apple"
+          />
+        </div>
+
+        <br />
+
+        <div>
+          <label htmlFor="search-color">Color</label>
+          <br />
+          <input
+            id="search-color"
+            type="text"
+            value={color}
+            onChange={(event) => setColor(event.target.value)}
+            placeholder="Example: Black"
           />
         </div>
 
@@ -233,7 +295,9 @@ function Listings() {
 
       {listings.map((listing) => (
         <div key={listing._id} className="listing-card">
-          <h2>{listing.title}</h2>
+          <h2>
+            <Link to={`/listings/${listing._id}`}>{listing.title}</Link>
+          </h2>
 
           {listing.images && listing.images.length > 0 && (
             <div className="listing-images">
@@ -256,6 +320,18 @@ function Listings() {
             <strong>Category:</strong> {listing.category}
           </p>
 
+          {listing.brand && (
+            <p>
+              <strong>Brand:</strong> {listing.brand}
+            </p>
+          )}
+
+          {listing.color && (
+            <p>
+              <strong>Color:</strong> {listing.color}
+            </p>
+          )}
+
           <p>
             <strong>Description:</strong> {listing.description}
           </p>
@@ -263,6 +339,10 @@ function Listings() {
           <p>
             <strong>Location:</strong>{" "}
             {listing.location?.building || "Not specified"}
+          </p>
+
+          <p>
+            <Link to={`/listings/${listing._id}`}>View details and claims</Link>
           </p>
 
           {currentUser &&

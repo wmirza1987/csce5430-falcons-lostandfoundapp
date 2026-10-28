@@ -22,7 +22,7 @@ function Login() {
     if (Object.keys(errors).length > 0) return;
 
     try {
-      const response = await fetch(apiUrl("/api/auth/login"), {
+      const response = await fetch(apiUrl("/api/v1/auth/login"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

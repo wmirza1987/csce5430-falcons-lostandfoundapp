@@ -10,7 +10,7 @@ function VerifyEmail() {
   useEffect(() => {
     const verify = async () => {
       try {
-        const response = await fetch(apiUrl(`/api/auth/verify-email/${token}`));
+        const response = await fetch(apiUrl(`/api/v1/auth/verify-email/${token}`));
         const data = await response.json();
 
         if (!response.ok) {
