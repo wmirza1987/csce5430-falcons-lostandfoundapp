@@ -1,0 +1,11 @@
+node_modules/
+**/node_modules/
+.env
+**/.env
+!.env.example
+**/.env.example
+uploads/
+**/uploads/listings/
+*.log
+.DS_Store
+/src/frontend/dist
