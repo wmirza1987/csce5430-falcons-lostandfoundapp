@@ -9,3 +9,8 @@ uploads/
 *.log
 .DS_Store
 /src/frontend/dist
+
+# local credentials - never commit
+.token
+.gh_token
+*.token
