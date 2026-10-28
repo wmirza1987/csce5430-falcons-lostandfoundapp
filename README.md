@@ -36,7 +36,7 @@ Lost and Found for Campus centers on a simple core workflow: a user posts a lost
 |---|---|
 | Frontend | React (ES6+) |
 | Backend | Node.js + Express |
-| Database | MongoDB Atlas (free tier) |
+| Database | MongoDB (local Docker for development; Atlas free tier for deployment) |
 | Notifications | Nodemailer |
 | Maps | Leaflet + OpenStreetMap (no API key required) |
 | Hosting | Render / Vercel (free tier) |
@@ -53,7 +53,9 @@ csce5430-falcons-lostandfoundapp/
 ├── GROUP-INFO                    # Team roster and contact info
 ├── note-deliverable-1.txt        # File manifest for Deliverable 1
 ├── note-deliverable-2.txt        # File manifest for Deliverable 2
-├── src/                          # Application source code (client + API)
+├── src/
+│   ├── backend/                  # Express API, MongoDB models, Jest tests
+│   └── frontend/                 # React + Vite client
 ├── reports/                      # Submitted deliverable reports (Word/PDF)
 ├── planning/                     # Timelines, risk management, phase planning docs
 ├── design/                       # Wireframes, data schema, and design decisions
@@ -84,9 +86,9 @@ See each deliverable's `note-deliverable-*.txt` file at the repository root for 
 
 ### Prerequisites
 
-- Node.js (LTS version) and npm
-- A MongoDB Atlas account (free tier) and connection string
-- An email account or provider for transactional email (a free SMTP account, Mailtrap, or Ethereal work for development)
+- Node.js (LTS version) and npm or pnpm
+- MongoDB 7+ (local Docker container or an Atlas connection string)
+- Optional: an SMTP account (Mailtrap, Ethereal, or similar) for verification, reset, and notification email
 
 ### Installation
 
@@ -95,58 +97,71 @@ git clone https://github.com/wmirza1987/csce5430-falcons-lostandfoundapp.git
 cd csce5430-falcons-lostandfoundapp
 
 # install API dependencies
-cd src/server
-npm install
+cd src/backend
+pnpm install
 
 # install client dependencies
-cd ../client
-npm install
+cd ../frontend
+pnpm install
 ```
 
 ### Required Environment Variables
 
-Set these in a `.env` file in `src/server/` (never commit actual secret values — this file documents names only):
+Copy `src/backend/.env.example` to `src/backend/.env` and `src/frontend/.env.example` to `src/frontend/.env`. Never commit `.env`.
+
+Backend (`src/backend/.env`):
 
 | Variable | Purpose |
 |---|---|
-| `PORT` | Port the Express API listens on |
-| `MONGODB_URI` | MongoDB Atlas connection string |
-| `JWT_SECRET` | Signing secret for authenticated sessions |
-| `JWT_EXPIRES_IN` | Session token expiration window |
-| `CAMPUS_EMAIL_DOMAINS` | Comma-separated allowed registration domains (e.g. `my.unt.edu,unt.edu`) |
-| `SMTP_HOST` | Email provider host |
+| `PORT` | Port the Express API listens on (default `5000`) |
+| `MONGODB_URI` | MongoDB connection string |
+| `MONGODB_URI_TEST` | Separate database used by Jest (defaults to a `_test` suffix) |
+| `JWT_SECRET` | Long random signing secret for authenticated sessions |
+| `APP_BASE_URL` | Public client URL used in verification/reset links |
+| `CLIENT_ORIGIN` | Comma-separated allowed browser origins for CORS |
+| `SMTP_HOST` | Email provider host (leave blank to skip delivery locally) |
 | `SMTP_PORT` | Email provider port |
 | `SMTP_USER` | Email provider account username |
 | `SMTP_PASS` | Email provider account password or API key |
-| `EMAIL_FROM` | "From" address used on outgoing email |
-| `CLIENT_ORIGIN` | Deployed client URL, for CORS |
-| `NODE_ENV` | `development` or `production` |
+| `SMTP_FROM` | "From" address used on outgoing email |
+
+Frontend (`src/frontend/.env`):
+
+| Variable | Purpose |
+|---|---|
+| `VITE_API_BASE_URL` | Backend URL, e.g. `http://localhost:5000` |
 
 ### Running Locally
 
 ```bash
-# from src/server
-npm run dev        # starts the API with hot reload
+# optional local MongoDB
+docker run -d --name lostfound-mongo --restart unless-stopped \
+  -p 127.0.0.1:27017:27017 \
+  -v lostfound-mongo-data:/data/db \
+  mongo:7.0
 
-# from src/client, in a separate terminal
-npm run dev        # starts the React development server
+# from src/backend
+pnpm dev           # starts the API with hot reload
+
+# from src/frontend, in a separate terminal
+pnpm dev           # starts the React development server
 ```
 
 ### Running Tests
 
 ```bash
-# from src/server
-npm test           # runs the API test suite
+# from src/backend (uses MONGODB_URI_TEST or the local _test database)
+pnpm test
 
-# from src/client
-npm test           # runs the client test suite
+# from src/frontend
+pnpm build         # production build check
 ```
 
 ### Deployment
 
 1. Push the `main` branch to GitHub.
-2. Deploy `src/server` to Render (or a similar free-tier host); set the environment variables listed above in the host's dashboard.
-3. Deploy `src/client` to Vercel (or a similar free-tier host); set `CLIENT_ORIGIN` on the API to the deployed client URL.
+2. Deploy `src/backend` to Render (or a similar free-tier host); set the environment variables listed above in the host's dashboard.
+3. Deploy `src/frontend` to Vercel (or a similar free-tier host); set `CLIENT_ORIGIN` on the API to the deployed client URL and `VITE_API_BASE_URL` on the client to the API URL.
 4. Confirm the deployed client can reach the deployed API before demoing.
 
 ---
