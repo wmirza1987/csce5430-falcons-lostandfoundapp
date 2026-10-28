@@ -40,7 +40,10 @@ const registerUser = async (req, res) => {
     const rawToken = user.generateEmailVerificationToken();
     await user.save();
 
-    await sendVerificationEmail(user.email, rawToken);
+    await sendVerificationEmail(user.email, rawToken).catch((error) => {
+      // Verification email failure must not roll back a successful registration.
+      console.error(`Unable to send verification email: ${error.message}`);
+    });
 
     return res.status(201).json({
       message: "User registered successfully. Please check your email to verify your account.",
@@ -51,12 +54,13 @@ const registerUser = async (req, res) => {
         email: user.email,
         role: user.role,
         isEmailVerified: user.isEmailVerified,
+        emailNotifications: user.emailNotifications,
       },
     });
   } catch (error) {
+    console.error(`Unable to register user: ${error.message}`);
     return res.status(500).json({
       message: "Unable to register user.",
-      error: error.message,
     });
   }
 };
@@ -94,9 +98,9 @@ const verifyEmail = async (req, res) => {
       message: "Email verified successfully. You can now create listings.",
     });
   } catch (error) {
+    console.error(`Unable to verify email: ${error.message}`);
     return res.status(500).json({
       message: "Unable to verify email.",
-      error: error.message,
     });
   }
 };
@@ -140,12 +144,13 @@ const loginUser = async (req, res) => {
         email: user.email,
         role: user.role,
         isEmailVerified: user.isEmailVerified,
+        emailNotifications: user.emailNotifications,
       },
     });
   } catch (error) {
+    console.error(`Unable to log in: ${error.message}`);
     return res.status(500).json({
       message: "Unable to log in.",
-      error: error.message,
     });
   }
 };
@@ -171,15 +176,17 @@ const forgotPassword = async (req, res) => {
     if (user) {
       const rawToken = user.generatePasswordResetToken();
       await user.save();
-      await sendPasswordResetEmail(user.email, rawToken);
+      await sendPasswordResetEmail(user.email, rawToken).catch((error) => {
+        console.error(`Unable to send password reset email: ${error.message}`);
+      });
     }
 
     // Always the same response, whether or not the account exists.
     return res.status(200).json(neutralResponse);
   } catch (error) {
+    console.error(`Unable to process password reset request: ${error.message}`);
     return res.status(500).json({
       message: "Unable to process password reset request.",
-      error: error.message,
     });
   }
 };
@@ -218,15 +225,43 @@ const resetPassword = async (req, res) => {
       message: "Password reset successfully. You can now log in with your new password.",
     });
   } catch (error) {
+    console.error(`Unable to reset password: ${error.message}`);
     return res.status(500).json({
       message: "Unable to reset password.",
-      error: error.message,
+    });
+  }
+};
+
+// FR-COM-01: a verified user may enable or disable optional email notifications.
+const updatePreferences = async (req, res) => {
+  try {
+    if (typeof req.body.emailNotifications !== "boolean") {
+      return res.status(400).json({
+        message: "emailNotifications must be true or false.",
+      });
+    }
+
+    req.user.emailNotifications = req.body.emailNotifications;
+    await req.user.save();
+
+    return res.status(200).json({
+      message: "Notification preferences updated.",
+      user: {
+        id: req.user._id,
+        emailNotifications: req.user.emailNotifications,
+      },
+    });
+  } catch (error) {
+    console.error(`Unable to update preferences: ${error.message}`);
+    return res.status(500).json({
+      message: "Unable to update preferences.",
     });
   }
 };
 
 module.exports = {
   registerUser,
+  updatePreferences,
   verifyEmail,
   loginUser,
   forgotPassword,
