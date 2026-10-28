@@ -10,6 +10,8 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import VerifyEmail from "./pages/VerifyEmail";
 import Listings from "./pages/Listings";
+import ListingDetail from "./pages/ListingDetail";
+import Notifications from "./pages/Notifications";
 import CreateListing from "./pages/CreateListing";
 import EditListing from "./pages/EditListing";
 
@@ -28,6 +30,8 @@ function App() {
           <Route path="/verify-email/:token" element={<VerifyEmail />} />
           <Route path="/listings" element={<Listings />} />
 
+          <Route path="/listings/:id" element={<ListingDetail />} />
+
           <Route
             path="/listings/new"
             element={
@@ -42,6 +46,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <EditListing />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/notifications"
+            element={
+              <ProtectedRoute>
+                <Notifications />
               </ProtectedRoute>
             }
           />
