@@ -66,7 +66,7 @@ describe("Phase 1 listing fixes", () => {
 
   test("refuses to edit or delete a non-active listing", async () => {
     const owner = await createUser();
-    const listing = await createListing(owner, { status: "pending_return" });
+    const listing = await createListing(owner, { status: "resolved" });
 
     const editResponse = await request(app)
       .put(`/api/v1/listings/${listing._id}`)

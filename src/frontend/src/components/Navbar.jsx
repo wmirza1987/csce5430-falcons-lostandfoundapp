@@ -21,6 +21,7 @@ function Navbar() {
           <>
             <Link to="/listings/new">Create Listing</Link>
             <Link to="/notifications">Notifications</Link>
+            <Link to="/messages">Messages</Link>
           </>
         )}
       </div>

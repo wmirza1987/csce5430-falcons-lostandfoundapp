@@ -1,8 +1,8 @@
 const Listing = require("../models/Listing");
 const { filesToImageUrls } = require("../middleware/uploadMiddleware");
 const {
-  refreshMatchesForListing,
   removeMatchesForListing,
+  scheduleMatchRefresh,
 } = require("../services/matchingService");
 
 const MAX_PAGE_SIZE = 20;
@@ -78,9 +78,8 @@ const createListing = async (req, res) => {
       createdBy: req.user._id,
     });
 
-    await refreshMatchesForListing(listing).catch((error) => {
-      logError("Unable to refresh matches after listing creation", error);
-    });
+    // FR-MATCH-01: matching runs in the background and never blocks creation.
+    scheduleMatchRefresh(listing);
 
     return res.status(201).json({
       message: "Listing created successfully.",
@@ -311,9 +310,8 @@ const updateListing = async (req, res) => {
 
     await listing.save();
 
-    await refreshMatchesForListing(listing).catch((error) => {
-      logError("Unable to refresh matches after listing update", error);
-    });
+    // FR-MATCH-02: suggestions are recomputed after every edit, in the background.
+    scheduleMatchRefresh(listing);
 
     return res.status(200).json({
       message: "Listing updated successfully.",

@@ -17,16 +17,27 @@ const notificationSchema = new mongoose.Schema(
         "claim_decision",
         "claim_closed",
         "resolution",
+        "message",
         "moderation",
       ],
       required: true,
     },
 
+    // Generic text only: never contact details, evidence, or message content
+    // (FR-NOTIF-02, NFR-PRIV-01).
     message: {
       type: String,
       required: true,
       trim: true,
       maxlength: 500,
+    },
+
+    // In-app route the notification points to, for example /claims/:id.
+    actionPath: {
+      type: String,
+      trim: true,
+      maxlength: 200,
+      default: "",
     },
 
     listing: {
@@ -45,15 +56,30 @@ const notificationSchema = new mongoose.Schema(
       index: true,
     },
 
+    // Email is optional (FR-NOTIF-01). "pending" is recorded before a send is
+    // attempted and becomes "sent" only after the provider confirms delivery.
     emailStatus: {
       type: String,
-      enum: ["not_requested", "sent", "failed", "skipped"],
+      enum: ["not_requested", "pending", "sent", "failed", "skipped"],
       default: "not_requested",
     },
 
     emailAttempts: {
       type: Number,
       default: 0,
+    },
+
+    emailSubject: {
+      type: String,
+      trim: true,
+      maxlength: 150,
+      select: false,
+    },
+
+    emailBody: {
+      type: String,
+      maxlength: 1000,
+      select: false,
     },
   },
   {
@@ -62,5 +88,6 @@ const notificationSchema = new mongoose.Schema(
 );
 
 notificationSchema.index({ user: 1, isRead: 1, createdAt: -1 });
+notificationSchema.index({ emailStatus: 1, createdAt: 1 });
 
 module.exports = mongoose.model("Notification", notificationSchema);

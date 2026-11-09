@@ -124,6 +124,8 @@ Backend (`src/backend/.env`):
 | `SMTP_USER` | Email provider account username |
 | `SMTP_PASS` | Email provider account password or API key |
 | `SMTP_FROM` | "From" address used on outgoing email |
+| `EVIDENCE_ENCRYPTION_KEY` | Base64 or hex 32-byte key for AES-256-GCM encryption of claim evidence. If unset, a key is derived from `JWT_SECRET`; set it explicitly in production |
+| `MATCH_THRESHOLD` | Optional. Minimum match score (0 to 1) that creates a potential match. Default `0.6` |
 
 Frontend (`src/frontend/.env`):
 
@@ -150,11 +152,13 @@ pnpm dev           # starts the React development server
 ### Running Tests
 
 ```bash
-# from src/backend (uses MONGODB_URI_TEST or the local _test database)
-pnpm test
+# from src/backend (uses MONGODB_URI_TEST or the local _test database;
+# a MongoDB server must be reachable before the tests start)
+pnpm test          # 6 suites, 83 tests: matching, claims, messaging, notifications, listing fixes, match API
 
 # from src/frontend
 pnpm build         # production build check
+pnpm lint          # oxlint static checks
 ```
 
 ### Deployment
