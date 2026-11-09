@@ -2,71 +2,55 @@ const Match = require("../models/Match");
 const Listing = require("../models/Listing");
 const { notifyPotentialMatch } = require("./notificationService");
 
+// FR-MATCH-01 scoring. Each component contributes a weighted share of a 0 to 1
+// composite score. Weights sum to 1.0.
+const WEIGHTS = {
+  category: 0.35,
+  date: 0.25,
+  location: 0.2,
+  keywords: 0.2,
+};
+
+const DEFAULT_MATCH_THRESHOLD = 0.6;
+const FULL_DATE_WINDOW_DAYS = 1;
+const DATE_WINDOW_DAYS = 7;
 const DAY_IN_MS = 1000 * 60 * 60 * 24;
-const MINIMUM_MATCH_SCORE = 65;
 
 const STOP_WORDS = new Set([
-  "the",
-  "and",
-  "for",
-  "with",
-  "near",
-  "from",
-  "inside",
-  "outside",
-  "lost",
-  "found",
-  "item",
-  "this",
-  "that",
-  "was",
-  "were",
-  "has",
-  "have",
-  "had",
-  "into",
-  "over",
-  "under",
-  "about",
-  "around",
-  "some",
-  "any",
-  "my",
-  "our",
-  "your",
-  "their",
-  "its",
-  "a",
-  "an",
-  "of",
-  "to",
-  "in",
-  "on",
-  "at",
-  "by",
-  "or",
-  "is",
-  "are",
-  "be",
-  "been",
-  "it",
-  "as",
-  "if",
+  "the", "and", "for", "with", "near", "from", "inside", "outside", "lost",
+  "found", "item", "this", "that", "was", "were", "has", "have", "had", "into",
+  "over", "under", "about", "around", "some", "any", "my", "our", "your",
+  "their", "its", "a", "an", "of", "to", "in", "on", "at", "by", "or", "is",
+  "are", "be", "been", "it", "as", "if",
 ]);
+
+// The threshold is configurable (MATCH_THRESHOLD, 0 to 1). It defaults to 0.6.
+function getMatchThreshold() {
+  const configured = Number(process.env.MATCH_THRESHOLD);
+
+  if (Number.isFinite(configured) && configured > 0 && configured <= 1) {
+    return configured;
+  }
+
+  return DEFAULT_MATCH_THRESHOLD;
+}
+
+function round(value) {
+  return Math.round(value * 100) / 100;
+}
 
 function normalizeWord(word) {
   const normalized = String(word || "")
     .toLowerCase()
     .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9]/g, "");
 
   if (normalized.length <= 2 || STOP_WORDS.has(normalized)) {
     return "";
   }
 
-  // Very small, deterministic normalization so "wallet"/"wallets" and
-  // "book"/"books" count as the same public keyword.
+  // Small deterministic normalization so "wallet"/"wallets" count as one word.
   if (normalized.length > 4 && normalized.endsWith("ies")) {
     return `${normalized.slice(0, -3)}y`;
   }
@@ -83,54 +67,19 @@ function getKeywords(listing) {
     return new Set();
   }
 
-  const text = [
-    listing.title,
-    listing.description,
-    listing.brand,
-    listing.color,
-  ]
+  const text = [listing.title, listing.description, listing.brand, listing.color]
     .filter(Boolean)
     .join(" ");
 
-  return new Set(
-    text
-      .split(/\s+/)
-      .map(normalizeWord)
-      .filter(Boolean)
-  );
-}
-
-function calculateKeywordDetails(lostListing, foundListing) {
-  const lostKeywords = getKeywords(lostListing);
-  const foundKeywords = getKeywords(foundListing);
-
-  const shared = [...lostKeywords]
-    .filter((keyword) => foundKeywords.has(keyword))
-    .sort();
-
-  if (shared.length >= 3) {
-    return { points: 20, shared };
-  }
-
-  if (shared.length >= 1) {
-    return { points: 10, shared };
-  }
-
-  return { points: 0, shared: [] };
-}
-
-function calculateKeywordScore(lostListing, foundListing) {
-  return calculateKeywordDetails(lostListing, foundListing).points;
+  return new Set(text.split(/\s+/).map(normalizeWord).filter(Boolean));
 }
 
 function calculateCategoryDetails(lostListing, foundListing) {
   const lostCategory = String(lostListing?.category || "").trim().toLowerCase();
   const foundCategory = String(foundListing?.category || "").trim().toLowerCase();
+  const matches = Boolean(lostCategory) && lostCategory === foundCategory;
 
-  return {
-    points:
-      lostCategory && foundCategory && lostCategory === foundCategory ? 35 : 0,
-  };
+  return { points: matches ? WEIGHTS.category : 0 };
 }
 
 function calculateDateDetails(lostListing, foundListing) {
@@ -146,92 +95,71 @@ function calculateDateDetails(lostListing, foundListing) {
   }
 
   const daysApart = Math.abs(foundDate - lostDate) / DAY_IN_MS;
+  const shown = round(daysApart);
 
-  if (daysApart <= 1) {
-    return { points: 25, daysApart: Number(daysApart.toFixed(2)) };
+  if (daysApart <= FULL_DATE_WINDOW_DAYS) {
+    return { points: WEIGHTS.date, daysApart: shown };
   }
 
-  if (daysApart <= 7) {
-    return { points: 15, daysApart: Number(daysApart.toFixed(2)) };
+  if (daysApart <= DATE_WINDOW_DAYS) {
+    return { points: round(WEIGHTS.date / 2), daysApart: shown };
   }
 
-  return { points: 0, daysApart: Number(daysApart.toFixed(2)) };
+  return { points: 0, daysApart: shown };
 }
 
 function calculateLocationDetails(lostListing, foundListing) {
-  const lostBuilding = String(lostListing?.location?.building || "")
-    .trim()
-    .toLowerCase();
-  const foundBuilding = String(foundListing?.location?.building || "")
-    .trim()
-    .toLowerCase();
+  const lostBuilding = String(lostListing?.location?.building || "").trim().toLowerCase();
+  const foundBuilding = String(foundListing?.location?.building || "").trim().toLowerCase();
   const lostZone = String(lostListing?.location?.zone || "").trim().toLowerCase();
   const foundZone = String(foundListing?.location?.zone || "").trim().toLowerCase();
 
-  if (lostBuilding && foundBuilding && lostBuilding === foundBuilding) {
-    return { points: 20, basis: "same building" };
+  if (lostBuilding && lostBuilding === foundBuilding) {
+    return { points: WEIGHTS.location, basis: "same building" };
   }
 
-  if (lostZone && foundZone && lostZone === foundZone) {
-    return { points: 10, basis: "same campus zone" };
+  if (lostZone && lostZone === foundZone) {
+    return { points: round(WEIGHTS.location / 2), basis: "same campus zone" };
   }
 
   return { points: 0, basis: "" };
 }
 
+function calculateKeywordDetails(lostListing, foundListing) {
+  const foundKeywords = getKeywords(foundListing);
+  const shared = [...getKeywords(lostListing)]
+    .filter((keyword) => foundKeywords.has(keyword))
+    .sort();
+
+  if (shared.length >= 3) {
+    return { points: WEIGHTS.keywords, shared };
+  }
+
+  if (shared.length >= 1) {
+    return { points: round(WEIGHTS.keywords / 2), shared };
+  }
+
+  return { points: 0, shared: [] };
+}
+
+// Returns the composite score and the per-component factors. Factors are for
+// storage and tuning only; callers must not expose them publicly (FR-MATCH-03).
 function calculateMatchDetails(lostListing, foundListing) {
-  if (!lostListing || !foundListing) {
-    return {
-      score: 0,
-      factors: {
-        category: { points: 0 },
-        date: { points: 0, daysApart: null },
-        location: { points: 0, basis: "" },
-        keywords: { points: 0, shared: [] },
-      },
-      explanation: [],
-    };
-  }
-
-  const category = calculateCategoryDetails(lostListing, foundListing);
-  const date = calculateDateDetails(lostListing, foundListing);
-  const location = calculateLocationDetails(lostListing, foundListing);
-  const keywords = calculateKeywordDetails(lostListing, foundListing);
-  const score =
-    category.points + date.points + location.points + keywords.points;
-
-  const explanation = [];
-
-  if (category.points > 0) {
-    explanation.push(`Same category (${category.points} points)`);
-  }
-
-  if (date.points > 0) {
-    explanation.push(
-      `Dates ${date.daysApart} day${date.daysApart === 1 ? "" : "s"} apart (${date.points} points)`
-    );
-  }
-
-  if (location.points > 0) {
-    explanation.push(`${location.basis} (${location.points} points)`);
-  }
-
-  if (keywords.points > 0) {
-    explanation.push(
-      `Shared public keywords: ${keywords.shared.join(", ")} (${keywords.points} points)`
-    );
-  }
-
-  return {
-    score,
-    factors: {
-      category,
-      date,
-      location,
-      keywords,
-    },
-    explanation,
+  const factors = {
+    category: calculateCategoryDetails(lostListing, foundListing),
+    date: calculateDateDetails(lostListing, foundListing),
+    location: calculateLocationDetails(lostListing, foundListing),
+    keywords: calculateKeywordDetails(lostListing, foundListing),
   };
+
+  const score = round(
+    factors.category.points +
+      factors.date.points +
+      factors.location.points +
+      factors.keywords.points
+  );
+
+  return { score, factors };
 }
 
 function calculateMatchScore(lostListing, foundListing) {
@@ -242,9 +170,9 @@ function pairKey(lostId, foundId) {
   return `${lostId.toString()}:${foundId.toString()}`;
 }
 
-// Recomputes every candidate pair for one listing and persists the suggestions
-// that meet the 65-point threshold. Also removes stale suggestions. Returns
-// newly created matches so callers can emit notifications exactly once.
+// Recomputes every opposite-type candidate for one listing, persists matches at
+// or above the threshold, removes stale ones, and notifies both parties of new
+// matches. Returns the newly created matches.
 async function refreshMatchesForListing(listingOrId) {
   const listing =
     typeof listingOrId === "string" || listingOrId?._bsontype
@@ -275,11 +203,9 @@ async function refreshMatchesForListing(listingOrId) {
     isDeleted: false,
   });
 
+  const threshold = getMatchThreshold();
   const existingByPair = new Map(
-    existingMatches.map((match) => [
-      pairKey(match.lostListing, match.foundListing),
-      match,
-    ])
+    existingMatches.map((match) => [pairKey(match.lostListing, match.foundListing), match])
   );
   const seenPairs = new Set();
   const matches = [];
@@ -289,10 +215,9 @@ async function refreshMatchesForListing(listingOrId) {
     const lostListing = listing.type === "lost" ? listing : candidate;
     const foundListing = listing.type === "found" ? listing : candidate;
     const key = pairKey(lostListing._id, foundListing._id);
-
     const details = calculateMatchDetails(lostListing, foundListing);
 
-    if (details.score < MINIMUM_MATCH_SCORE) {
+    if (details.score < threshold) {
       continue;
     }
 
@@ -318,9 +243,7 @@ async function refreshMatchesForListing(listingOrId) {
   }
 
   const staleIds = existingMatches
-    .filter(
-      (match) => !seenPairs.has(pairKey(match.lostListing, match.foundListing))
-    )
+    .filter((match) => !seenPairs.has(pairKey(match.lostListing, match.foundListing)))
     .map((match) => match._id);
 
   if (staleIds.length > 0) {
@@ -336,6 +259,26 @@ async function refreshMatchesForListing(listingOrId) {
   return { listing, matches, newMatches };
 }
 
+// Matching is an optional dependency of listing creation (NFR REL 02). Jobs run
+// in the background so a slow or failing match run never blocks or fails the
+// listing request that triggered it.
+const pendingMatchJobs = new Set();
+
+function scheduleMatchRefresh(listing) {
+  const job = refreshMatchesForListing(listing)
+    .catch((error) => {
+      console.error(`Matching failed for listing ${listing._id}: ${error.message}`);
+    })
+    .finally(() => pendingMatchJobs.delete(job));
+
+  pendingMatchJobs.add(job);
+  return job;
+}
+
+async function waitForPendingMatchJobs() {
+  await Promise.allSettled([...pendingMatchJobs]);
+}
+
 async function removeMatchesForListing(listingId) {
   await Match.deleteMany({
     $or: [{ lostListing: listingId }, { foundListing: listingId }],
@@ -343,12 +286,15 @@ async function removeMatchesForListing(listingId) {
 }
 
 module.exports = {
-  MINIMUM_MATCH_SCORE,
+  DEFAULT_MATCH_THRESHOLD,
+  WEIGHTS,
+  calculateKeywordDetails,
   calculateMatchDetails,
   calculateMatchScore,
-  calculateKeywordDetails,
-  calculateKeywordScore,
   getKeywords,
+  getMatchThreshold,
   refreshMatchesForListing,
   removeMatchesForListing,
+  scheduleMatchRefresh,
+  waitForPendingMatchJobs,
 };

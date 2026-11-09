@@ -14,3 +14,6 @@ uploads/
 .token
 .gh_token
 *.token
+
+# encrypted claim evidence (NFR-PRIV) - never commit
+**/private/

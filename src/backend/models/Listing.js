@@ -73,7 +73,7 @@ const listingSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["active", "pending_return", "resolved"],
+      enum: ["active", "resolved"],
       default: "active",
     },
 

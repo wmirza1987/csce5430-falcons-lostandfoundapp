@@ -14,6 +14,10 @@ import ListingDetail from "./pages/ListingDetail";
 import Notifications from "./pages/Notifications";
 import CreateListing from "./pages/CreateListing";
 import EditListing from "./pages/EditListing";
+import ClaimForm from "./pages/ClaimForm";
+import ClaimReview from "./pages/ClaimReview";
+import Messaging from "./pages/Messaging";
+import MessageThreads from "./pages/MessageThreads";
 
 function App() {
   return (
@@ -55,6 +59,42 @@ function App() {
             element={
               <ProtectedRoute>
                 <Notifications />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/matches/:matchId/claim"
+            element={
+              <ProtectedRoute>
+                <ClaimForm />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/claims/:id"
+            element={
+              <ProtectedRoute>
+                <ClaimReview />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/messages"
+            element={
+              <ProtectedRoute>
+                <MessageThreads />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/messages/:claimId"
+            element={
+              <ProtectedRoute>
+                <Messaging />
               </ProtectedRoute>
             }
           />

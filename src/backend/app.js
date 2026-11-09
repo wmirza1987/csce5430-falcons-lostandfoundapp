@@ -7,6 +7,7 @@ const listingRoutes = require("./routes/listingRoutes");
 const matchRoutes = require("./routes/matchRoutes");
 const claimRoutes = require("./routes/claimRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const messageRoutes = require("./routes/messageRoutes");
 
 const app = express();
 
@@ -39,6 +40,7 @@ apiRouter.use("/auth", authRoutes);
 apiRouter.use("/listings", listingRoutes);
 apiRouter.use(matchRoutes);
 apiRouter.use(claimRoutes);
+apiRouter.use(messageRoutes);
 apiRouter.use(notificationRoutes);
 
 // Versioned API (IF-SW-01); the unversioned mount is kept as a compatibility

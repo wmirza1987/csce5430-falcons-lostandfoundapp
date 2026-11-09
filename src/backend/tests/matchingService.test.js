@@ -1,134 +1,164 @@
+const Listing = require("../models/Listing");
+const Match = require("../models/Match");
 const {
   calculateMatchDetails,
-  calculateMatchScore,
-  calculateKeywordScore,
   refreshMatchesForListing,
+  WEIGHTS,
 } = require("../services/matchingService");
-const Match = require("../models/Match");
 const { createListing, createUser } = require("./helpers");
 
-describe("Matching Service", () => {
-  test("returns 100 for a strong match", () => {
-    const lostListing = {
-      title: "Black Apple AirPods",
-      description: "Lost black AirPods near library",
-      category: "Electronics",
-      date: "2026-10-01",
-      location: {
-        building: "Willis",
-      },
-    };
+const day = (iso) => new Date(iso);
 
-    const foundListing = {
-      title: "Apple AirPods Found",
-      description: "Found black AirPods inside library",
-      category: "Electronics",
-      date: "2026-10-02",
-      location: {
-        building: "Willis",
-      },
-    };
+function listing(overrides = {}) {
+  return {
+    type: "lost",
+    title: "Black AirPods",
+    category: "Electronics",
+    brand: "Apple",
+    color: "Black",
+    description: "Lost black AirPods near the library",
+    date: day("2026-10-01"),
+    location: { building: "Willis Library", zone: "North Campus" },
+    ...overrides,
+  };
+}
 
-    expect(calculateMatchScore(lostListing, foundListing)).toBe(100);
+describe("Scoring components (FR-MATCH-01)", () => {
+  test("UT-MATCH-01: an exact category match contributes the category weight", () => {
+    const { factors } = calculateMatchDetails(listing({ type: "lost" }), listing({ type: "found" }));
+    expect(factors.category.points).toBe(WEIGHTS.category);
   });
 
-  test("returns the contributing factors for a match", () => {
-    const details = calculateMatchDetails(
-      {
-        title: "Black AirPods",
-        description: "Lost black AirPods near library",
-        category: "Electronics",
-        date: "2026-10-01",
-        location: { building: "Willis", zone: "North Campus" },
-      },
-      {
-        title: "Found AirPods",
-        description: "Found black AirPods in library",
-        category: "Electronics",
-        date: "2026-10-01",
-        location: { building: "Willis", zone: "North Campus" },
-      }
+  test("UT-MATCH-02: a shared building contributes the full location weight", () => {
+    const { factors } = calculateMatchDetails(listing(), listing({ type: "found" }));
+    expect(factors.location.points).toBe(WEIGHTS.location);
+    expect(factors.location.basis).toBe("same building");
+  });
+
+  test("UT-MATCH-03: items one day apart contribute the full date weight", () => {
+    const { factors } = calculateMatchDetails(
+      listing(),
+      listing({ type: "found", date: day("2026-10-02") })
+    );
+    expect(factors.date.points).toBe(WEIGHTS.date);
+    expect(factors.date.daysApart).toBe(1);
+  });
+
+  test("UT-MATCH-04: three shared keywords contribute the full keyword weight", () => {
+    const lost = listing({ description: "Black leather wallet with cards", title: "Wallet" });
+    const found = listing({ type: "found", description: "Found black leather wallet with cards", title: "Wallet" });
+    const { factors } = calculateMatchDetails(lost, found);
+
+    expect(factors.keywords.points).toBe(WEIGHTS.keywords);
+    expect(factors.keywords.shared.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("UT-MATCH-05: the composite score is the weighted sum of the components", () => {
+    const { score } = calculateMatchDetails(
+      listing(),
+      listing({ type: "found", date: day("2026-09-01"), location: { building: "Other Hall" }, description: "Silver ring" })
     );
 
-    expect(details.score).toBe(100);
-    expect(details.factors.category.points).toBe(35);
-    expect(details.factors.date.points).toBe(25);
-    expect(details.factors.location.points).toBe(20);
-    expect(details.factors.keywords.points).toBe(20);
-    expect(details.factors.keywords.shared).toEqual(
-      expect.arrayContaining(["airpod", "black", "library"])
+    // Category matches, dates are 30 days apart, buildings differ, and the title,
+    // brand, and color still share three keywords, so only those two components count.
+    expect(score).toBe(WEIGHTS.category + WEIGHTS.keywords);
+  });
+
+  test("UT-MATCH-06: a category mismatch removes the category contribution", () => {
+    const { factors } = calculateMatchDetails(listing(), listing({ type: "found", category: "Keys" }));
+    expect(factors.category.points).toBe(0);
+  });
+
+  test("UT-MATCH-07: a different building removes the building contribution", () => {
+    const { factors } = calculateMatchDetails(
+      listing({ location: { building: "Willis Library" } }),
+      listing({ type: "found", location: { building: "Union" } })
     );
-    expect(details.explanation.length).toBeGreaterThanOrEqual(4);
+    expect(factors.location.points).toBe(0);
   });
 
-  test("returns 20 when three or more keywords match", () => {
-    const lostListing = {
-      title: "Black Apple AirPods",
-      description: "Lost near library",
-      category: "Electronics",
-    };
-
-    const foundListing = {
-      title: "Black Apple AirPods",
-      description: "Found near library",
-      category: "Electronics",
-    };
-
-    expect(calculateKeywordScore(lostListing, foundListing)).toBe(20);
+  test("UT-MATCH-08: items 30 days apart contribute no date weight", () => {
+    const { factors } = calculateMatchDetails(
+      listing(),
+      listing({ type: "found", date: day("2026-10-31") })
+    );
+    expect(factors.date.points).toBe(0);
   });
 
-  test("returns 0 when listings have no matching information", () => {
-    const lostListing = {
-      title: "Wallet",
-      category: "Personal",
-    };
-
-    const foundListing = {
-      title: "Laptop",
-      category: "Electronics",
-    };
-
-    expect(calculateMatchScore(lostListing, foundListing)).toBe(0);
+  test("UT-MATCH-09: no shared keywords contributes nothing", () => {
+    const { factors } = calculateMatchDetails(
+      listing({ title: "Umbrella", description: "Blue umbrella", brand: "", color: "" }),
+      listing({ type: "found", title: "Notebook", description: "Spiral notebook", brand: "", color: "" })
+    );
+    expect(factors.keywords.points).toBe(0);
   });
 
-  test("persists only suggestions at or above the 65-point threshold", async () => {
+  test("UT-MATCH-14: a lost listing with no found candidates produces no matches", async () => {
     const owner = await createUser();
+    const lost = await createListing(owner, { type: "lost" });
 
-    const lost = await createListing(owner, {
-      type: "lost",
-      title: "Black AirPods",
-      description: "Lost black AirPods near Willis Library",
-      date: new Date("2026-10-01"),
-    });
+    const result = await refreshMatchesForListing(lost);
 
-    const found = await createListing(owner, {
+    expect(result.matches).toHaveLength(0);
+    expect(await Match.countDocuments({})).toBe(0);
+  });
+});
+
+describe("Refresh and threshold (FR-MATCH-01, FR-MATCH-02)", () => {
+  test("persists only pairs at or above the 0.6 threshold", async () => {
+    const owner = await createUser();
+    const finder = await createUser();
+    const lost = await createListing(owner, { type: "lost" });
+    const strong = await createListing(finder, { type: "found", title: "Black AirPods case" });
+    await createListing(finder, {
       type: "found",
-      title: "Found AirPods",
-      description: "Found black AirPods in Willis Library",
-      date: new Date("2026-10-01"),
+      title: "Red scarf",
+      description: "Red wool scarf",
+      category: "Clothing",
+      location: { building: "Union" },
+      date: day("2026-09-01"),
+      brand: "",
+      color: "",
     });
 
-    const weakFound = await createListing(owner, {
-      type: "found",
-      title: "Blue Umbrella",
-      category: "Other",
-      description: "Found a blue umbrella",
-      date: new Date("2026-10-20"),
-      location: { building: "Union", zone: "South Campus" },
-    });
-
-    const result = await refreshMatchesForListing(lost._id);
+    const result = await refreshMatchesForListing(lost);
 
     expect(result.matches).toHaveLength(1);
-    expect(result.matches[0].score).toBeGreaterThanOrEqual(65);
-    expect(result.matches[0].lostListing.toString()).toBe(lost._id.toString());
-    expect(result.matches[0].foundListing.toString()).toBe(found._id.toString());
-    expect(result.newMatches).toHaveLength(1);
+    expect(String(result.matches[0].foundListing)).toBe(String(strong._id));
+    expect(result.matches[0].score).toBeGreaterThanOrEqual(0.6);
+  });
 
-    const stored = await Match.find({});
-    expect(stored).toHaveLength(1);
-    expect(stored[0].factors.category.points).toBe(35);
-    expect(stored[0].factors.keywords.shared.length).toBeGreaterThanOrEqual(3);
-    expect(weakFound._id).toBeDefined();
+  test("removes a match when the listing changes and no longer qualifies (FR-MATCH-02)", async () => {
+    const owner = await createUser();
+    const finder = await createUser();
+    const lost = await createListing(owner, { type: "lost" });
+    const found = await createListing(finder, { type: "found" });
+    await refreshMatchesForListing(lost);
+    expect(await Match.countDocuments({})).toBe(1);
+
+    found.category = "Keys";
+    found.location = { building: "Union" };
+    found.date = day("2026-11-01");
+    found.title = "Keys";
+    found.description = "Set of keys";
+    found.brand = "";
+    found.color = "";
+    await found.save();
+    await refreshMatchesForListing(found);
+
+    expect(await Match.countDocuments({})).toBe(0);
+  });
+
+  test("a deleted listing has its matches removed", async () => {
+    const owner = await createUser();
+    const finder = await createUser();
+    const lost = await createListing(owner, { type: "lost" });
+    const found = await createListing(finder, { type: "found" });
+    await refreshMatchesForListing(lost);
+
+    await Listing.updateOne({ _id: found._id }, { $set: { isDeleted: true } });
+    await refreshMatchesForListing(await Listing.findById(found._id));
+
+    expect(await Match.countDocuments({})).toBe(0);
   });
 });
