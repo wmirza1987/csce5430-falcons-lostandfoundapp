@@ -1,0 +1,81 @@
+TEAM FALCONS - DELIVERABLE 4 - NOTE ON SUBMITTED FILES
+Lost and Found for Campus, CSCE 5430, Software Engineering, Fall 2026
+
+This file lists the name and repository location of every file submitted for
+Deliverable 4 (Phase II), corresponding to the 15 required items in the
+Deliverable 4 rubric. This file itself is placed at the top level of the
+repository.
+
+1. Requirements (Phase 2)
+   File: D4 Item 01 Requirements Phase 2.docx
+   Location: /reports/deliverable-4/
+
+2. UML Design Package (Phase 2)
+   File: D4 Item 02 UML Design Phase 2.docx
+   Location: /reports/deliverable-4/
+
+3. Coding and AI Usage Disclosure
+   File: D4 Item 03 Coding AI Usage Disclosure.docx
+   Location: /reports/deliverable-4/
+
+4. Test Cases (Phase 2)
+   File: D4 Item 04 Test Cases Phase 2.docx
+   Location: /reports/deliverable-4/
+
+5. User Manual (Phase 2)
+   File: D4 Item 05 User Manual Phase 2.docx
+   Location: /reports/deliverable-4/
+
+6. Compilation and Run Instructions
+   File: D4 Item 06 Compilation Run Instructions.docx
+   Location: /reports/deliverable-4/
+
+7. Code Inspection Feedback
+   File: D4 Item 07 Code Inspection Feedback.docx
+   Location: /reports/deliverable-4/
+
+8. Reflection
+   File: D4 Item 08 Reflection.docx
+   Location: /reports/deliverable-4/
+
+9. Member Contribution Table
+   File: D4 Item 09 Member Contribution Table.docx
+   Location: /reports/deliverable-4/
+
+10. Updated Meeting Minutes
+    Files: D4 Item 10 Updated Meeting Minutes 1 (Planning).docx
+           D4 Item 10 Updated Meeting Minutes 2 (Catchup).docx
+    Location: /reports/deliverable-4/
+
+11. Note-deliverable-4 File
+    File: D4_Item11_note-deliverable-4.txt
+    Location: / (top level of repository, this file)
+
+12. Code Compiles and Runs and Code Functionalities (Phase 2) / HTML Demo File
+    Source: Express/Node.js backend and React/Vite frontend
+    Location: /src/backend/, /src/frontend/
+    Demo file: D4 Item 12 Phase 2 Demo.html
+    Location: /reports/deliverable-4/
+    Status: the backend test suite runs with npm test (6 suites, 83 tests,
+    all passing against a local MongoDB instance), and the frontend
+    production build completes with npx vite build. The demo file is a
+    single, self-contained HTML file that exercises the Phase 2 flows
+    (sign-in, listings, matching, claims, claim review, messaging, and
+    notifications) in the browser with no server, database, or install step.
+    It uses simulated data held in the browser. A live browser run of the
+    full application against the running backend has not been recorded.
+
+13. Code Functionalities Match Report (Phase 2)
+    File: D4 Item 13 Code Functionalities Match Report Phase 2.docx
+    Location: /reports/deliverable-4/
+
+14. Code in Correct Repository Folder
+    Source: Express/Node.js backend and React/Vite frontend
+    Location: /src/backend/, /src/frontend/
+
+15. Code Inspection Report (Phase 2)
+    File: D4 Item 15 Code Inspection Report Phase 2.docx
+    Location: /reports/deliverable-4/
+
+Supporting material: the Phase 2 Screenshots folder is located at
+/reports/deliverable-4/Phase 2 Screenshots/.
