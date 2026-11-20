@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lost and Found for Campus</title>
+<style>
+:root {
+  --bg: #ffffff; --text: #222222; --muted: #555555; --card: #ffffff; --border: #dddddd;
+  --input-border: #888888; --button-bg: #ffffff; --button-hover: #f0f0f0; --link: #2f5d9f;
+  --nav-bg: #ffffff; --accent: #1f6feb;
+  --ok-bg: #e6f7ec; --ok-border: #3c9d5d; --warn-bg: #fff7db; --warn-border: #d9b43c;
+  --err-bg: #fdecec; --err-border: #c0392b; --info-bg: #eef6ff; --info-border: #9cc7f0;
+  --unread: #f5f9ff; --muted-bg: rgba(127,127,127,0.12);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121212; --text: #e8e8e8; --muted: #aaaaaa; --card: #1b1b1b; --border: #333333;
+    --input-border: #666666; --button-bg: #1b1b1b; --button-hover: #2a2a2a; --link: #8ab4f8;
+    --nav-bg: #1b1b1b; --accent: #6aa2ff;
+    --ok-bg: #12301d; --ok-border: #3c9d5d; --warn-bg: #2a2410; --warn-border: #5a4a1a;
+    --err-bg: #3a1717; --err-border: #a33; --info-bg: #14233a; --info-border: #3b74c4;
+    --unread: #17233a; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif; line-height: 1.45; }
+a { color: var(--link); }
+h1 { font-size: 1.5rem; margin: 0 0 12px; }
+h2 { font-size: 1.15rem; margin: 18px 0 8px; }
+h3 { font-size: 1rem; margin: 0 0 6px; }
+.hint { color: var(--muted); font-size: 0.9rem; }
+code { font-size: 0.85rem; background: var(--muted-bg); padding: 1px 4px; border-radius: 4px; }
+
+.navbar { position: sticky; top: 0; z-index: 5; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; background: var(--nav-bg); border-bottom: 1px solid var(--border); padding: 12px 20px; }
+.navbar .brand { font-weight: 700; text-decoration: none; color: var(--text); margin-right: 12px; }
+.nav-links, .nav-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.nav-links a { text-decoration: none; }
+.nav-links a[aria-current="page"] { font-weight: 700; }
+.nav-right .who { color: var(--muted); font-size: 0.9rem; }
+.count { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 0.75rem; text-align: center; margin-left: 4px; }
+
+.container { max-width: 960px; margin: 0 auto; padding: 20px; }
+.login-wrap { max-width: 420px; margin: 40px auto; padding: 0 20px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin-bottom: 16px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.panel { border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.segmented { display: inline-flex; gap: 6px; }
+
+button, .btn { font: inherit; color: var(--text); background: var(--button-bg); border: 1px solid var(--input-border); border-radius: 6px; padding: 7px 12px; cursor: pointer; text-decoration: none; display: inline-block; }
+button:hover:not(:disabled), .btn:hover { background: var(--button-hover); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.primary, .btn.primary { border-color: var(--accent); font-weight: 600; }
+button[aria-pressed="true"] { border-color: var(--accent); background: var(--info-bg); }
+button.link { border: 0; background: none; color: var(--link); padding: 0; text-decoration: underline; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+input[type="text"], input[type="email"], input[type="password"], input[type="date"], select, textarea {
+  font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--input-border); border-radius: 6px; padding: 8px; width: 100%;
+}
+textarea { min-height: 90px; resize: vertical; }
+input[type="file"] { font: inherit; color: var(--text); }
+.form-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.form-field label, .field-label { font-weight: 600; }
+.radio-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.radio-row label, .checkbox-row { display: flex; gap: 6px; align-items: center; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.preview { white-space: pre-wrap; background: var(--bg); border: 1px dashed var(--border); border-radius: 6px; padding: 10px; }
+
+.flash { border-radius: 6px; padding: 10px 14px; border: 1px solid; margin-bottom: 14px; }
+.flash-error { background: var(--err-bg); border-color: var(--err-border); }
+.flash-success { background: var(--ok-bg); border-color: var(--ok-border); }
+.flash-warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.flash-info { background: var(--info-bg); border-color: var(--info-border); }
+
+.badge { display: inline-block; padding: 1px 9px; border-radius: 999px; border: 1px solid var(--border); font-size: 0.82rem; white-space: nowrap; }
+.badge-lost, .badge-pending { background: var(--warn-bg); border-color: var(--warn-border); }
+.badge-found, .badge-active { background: var(--info-bg); border-color: var(--info-border); }
+.badge-approved, .badge-resolved { background: var(--ok-bg); border-color: var(--ok-border); }
+.badge-rejected { background: var(--err-bg); border-color: var(--err-border); }
+.badge-closed { background: var(--muted-bg); }
+
+.listing-card { display: block; text-decoration: none; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+.listing-card:hover { border-color: var(--accent); }
+.listing-card .meta { color: var(--muted); font-size: 0.88rem; margin: 6px 0; }
+dl.details { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+dl.details dt { color: var(--muted); }
+dl.details dd { margin: 0; }
+.photo-placeholder { display: inline-block; border: 1px solid var(--border); border-radius: 6px; padding: 26px 12px; margin: 4px 6px 4px 0; background: var(--muted-bg); font-size: 0.85rem; }
+.item { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; background: var(--card); }
+.item.is-unread { border-left: 4px solid var(--accent); background: var(--unread); }
+.bubble-list { list-style: none; padding: 0; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; }
+.bubble { max-width: 80%; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.bubble.is-finder { align-self: flex-end; background: var(--info-bg); border-color: var(--info-border); }
+.bubble.is-system { align-self: center; max-width: 92%; text-align: center; background: var(--warn-bg); border-color: var(--warn-border); }
+.bubble p { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.empty { color: var(--muted); padding: 12px 0; }
+
+@media (max-width: 640px) {
+  .two-column { grid-template-columns: 1fr; }
+  .bubble { max-width: 100%; }
+  .container { padding: 14px; }
+}
+@media (max-width: 360px) {
+  .navbar { padding: 10px 12px; }
+  .nav-links, .nav-right { gap: 8px; }
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var THRESHOLD = 0.6;
+  var MAX_TEXT = 1000;
+  var MAX_DESC = 500;
+  var MAX_LISTING_IMAGES = 3;
+  var MAX_CLAIM_PHOTOS = 2;
+  var MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+  var PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+  var CATEGORIES = ["Wallet", "Phone", "Keys", "Bag", "Electronics", "Bottle", "Books", "Clothing", "Other"];
+  var CONTACT = /[\w.+-]+@[\w-]+\.[\w.]+|\+?\d[\d\s().-]{7,}\d/;
+  var STOP = { the: 1, a: 1, an: 1, and: 1, or: 1, of: 1, with: 1, in: 1, on: 1, at: 1, my: 1, is: 1, it: 1, to: 1, for: 1, by: 1, near: 1 };
+  var BADGE_LABEL = { lost: "Lost", found: "Found", pending: "Pending", approved: "Approved", rejected: "Rejected", closed: "Closed", active: "Active", resolved: "Resolved" };
+
+  // ---------- Data layer (in memory, mirrors the API rules) ----------
+
+  var S;
+
+  function blankListing() {
+    return { type: "lost", title: "", category: "Wallet", color: "", brand: "", location: "", date: "", description: "", privateDetails: "", images: [] };
+  }
+
+  function makeState() {
+    return {
+      session: null,
+      flash: null,
+      seq: 300,
+      users: [
+        { id: "u-alex", name: "Alex Morgan", email: "alex@campus.example", emailNotifications: true },
+        { id: "u-jordan", name: "Jordan Lee", email: "jordan@campus.example", emailNotifications: true }
+      ],
+      listings: [],
+      matches: [],
+      claims: [],
+      threads: {},
+      notifications: [],
+      drafts: { login: { email: "", password: "" }, newListing: blankListing(), claim: {}, decision: {}, msg: {} },
+      filter: "all"
+    };
+  }
+
+  function seed() {
+    var now = Date.now();
+    var items = [
+      { id: "L-101", type: "lost", title: "Black leather wallet", category: "Wallet", color: "Black", brand: "", location: "Main Library, 2nd floor", date: "2026-11-03", description: "Holds my student ID and two bank cards.", privateDetails: "Brass key tag stamped LIB-22 in the coin pocket.", ownerId: "u-alex", images: [] },
+      { id: "F-214", type: "found", title: "Black leather wallet", category: "Wallet", color: "Black", brand: "", location: "Main Library, 1st floor desk", date: "2026-11-04", description: "Handed in at the front desk.", privateDetails: "Brass key tag stamped LIB-22 in the coin pocket; student ID inside.", ownerId: "u-jordan", images: [] },
+      { id: "L-102", type: "lost", title: "Blue water bottle", category: "Bottle", color: "Blue", brand: "Hydro", location: "Recreation Center, lobby", date: "2026-11-05", description: "Steel bottle with a dent near the cap.", privateDetails: "Name written on the base in marker.", ownerId: "u-alex", images: [] },
+      { id: "F-216", type: "found", title: "Blue insulated water bottle", category: "Bottle", color: "Blue", brand: "", location: "Recreation Center, locker room", date: "2026-11-06", description: "Steel bottle with a dent near the cap.", privateDetails: "Red bird sticker on the side.", ownerId: "u-jordan", images: [] },
+      { id: "F-217", type: "found", title: "Calculus textbook", category: "Books", color: "Blue", brand: "", location: "Discovery Park, bench", date: "2026-11-07", description: "Hardcover with highlighted pages.", privateDetails: "Name inside the cover is torn out.", ownerId: "u-jordan", images: [] }
+    ];
+    items.forEach(function (item, i) {
+      item.status = "active";
+      item.createdAt = now - (items.length - i) * 3600000;
+      S.listings.push(item);
+      runMatching(item);
+    });
+  }
+
+  function resetAll() {
+    S = makeState();
+    seed();
+  }
+
+  function nextId(prefix) {
+    S.seq += 1;
+    return prefix + "-" + S.seq;
+  }
+
+  function user(id) { return S.users.find(function (u) { return u.id === id; }); }
+  function listing(id) { return S.listings.find(function (l) { return l.id === id; }); }
+  function claimById(id) { return S.claims.find(function (c) { return c.id === id; }); }
+  function matchById(id) { return S.matches.find(function (m) { return m.id === id; }); }
+  function activeClaimFor(matchId, userId) {
+    return S.claims.find(function (c) {
+      return c.matchId === matchId && c.claimantId === userId && (c.status === "pending" || c.status === "approved");
+    });
+  }
+
+  function notify(userId, text, type, path) {
+    var u = user(userId);
+    S.notifications.unshift({
+      id: nextId("N"), userId: userId, text: text, type: type, path: path, read: false,
+      at: Date.now(), emailStatus: u && u.emailNotifications ? "sent" : "skipped"
+    });
+  }
+
+  // Matching: weighted score on a 0 to 1 scale (category 0.35, date 0.25, location 0.20, keywords 0.20).
+  function tokens(text) {
+    return String(text || "").toLowerCase().split(/[^a-z0-9]+/).filter(function (t) { return t && !STOP[t]; });
+  }
+  function jaccard(a, b) {
+    var A = Array.from(new Set(a)), B = Array.from(new Set(b));
+    if (!A.length && !B.length) return 0;
+    var inter = A.filter(function (x) { return B.indexOf(x) !== -1; }).length;
+    var union = Array.from(new Set(A.concat(B))).length;
+    return union ? inter / union : 0;
+  }
+  function scorePair(lost, found) {
+    var category = lost.category === found.category ? 1 : 0;
+    var days = Math.abs((new Date(lost.date) - new Date(found.date)) / 86400000);
+    var dateScore = days <= 1 ? 1 : days <= 7 ? 0.5 : 0;
+    var location = jaccard(tokens(lost.location), tokens(found.location));
+    var keywords = jaccard(
+      tokens([lost.title, lost.color, lost.brand, lost.description].join(" ")),
+      tokens([found.title, found.color, found.brand, found.description].join(" "))
+    );
+    var score = 0.35 * category + 0.25 * dateScore + 0.2 * location + 0.2 * keywords;
+    return Math.round(score * 100) / 100;
+  }
+
+  function runMatching(item) {
+    var created = [];
+    S.listings.forEach(function (other) {
+      if (other.id === item.id || other.status !== "active" || other.type === item.type || other.ownerId === item.ownerId) return;
+      var lost = item.type === "lost" ? item : other;
+      var found = item.type === "found" ? item : other;
+      if (S.matches.some(function (m) { return m.lostId === lost.id && m.foundId === found.id; })) return;
+      var score = scorePair(lost, found);
+      if (score < THRESHOLD) return;
+      var match = { id: nextId("M"), lostId: lost.id, foundId: found.id, score: score };
+      S.matches.push(match);
+      created.push(match);
+      notify(lost.ownerId, "A possible match was found for your lost item “" + lost.title + "”.", "match", "#/matches/" + match.id + "/claim");
+      notify(found.ownerId, "Your found item “" + found.title + "” may match a lost report.", "match", "#/listings/" + found.id);
+    });
+    return created;
+  }
+
+  // ---------- Helpers ----------
+
+  function esc(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function getPath(path) {
+    return path.split(".").reduce(function (obj, key) { return obj == null ? undefined : obj[key]; }, S);
+  }
+  function setPath(path, value) {
+    var keys = path.split(".");
+    var obj = S;
+    for (var i = 0; i < keys.length - 1; i++) {
+      if (obj[keys[i]] == null || typeof obj[keys[i]] !== "object") obj[keys[i]] = {};
+      obj = obj[keys[i]];
+    }
+    obj[keys[keys.length - 1]] = value;
+  }
+  function claimDraft(matchId) {
+    if (!S.drafts.claim[matchId]) S.drafts.claim[matchId] = { explanation: "", photos: [], reviewing: false };
+    return S.drafts.claim[matchId];
+  }
+  function fmtDate(iso) {
+    return new Date(iso + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  }
+  function fmtTime(ms) {
+    return new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+  function badge(status) {
+    return '<span class="badge badge-' + esc(status) + '">' + esc(BADGE_LABEL[status] || status) + "</span>";
+  }
+  function flashHtml(f) {
+    return '<div class="flash flash-' + esc(f.type) + '" role="' + (f.type === "error" ? "alert" : "status") + '">' + esc(f.text) + "</div>";
+  }
+  function fail(text) { S.flash = { type: "error", text: text }; }
+  function ok(text) { S.flash = { type: "success", text: text }; }
+  function warn(text) { S.flash = { type: "warning", text: text }; }
+  function info(text) { S.flash = { type: "info", text: text }; }
+  function unreadCount() {
+    return S.notifications.filter(function (n) { return n.userId === S.session && !n.read; }).length;
+  }
+  function fileSummary(files) {
+    return files.length ? files.map(function (f) { return esc(f.name); }).join(", ") : "None selected";
+  }
+
+  // ---------- Layout ----------
+
+  function currentRoute() {
+    var raw = (location.hash || "").replace(/^#\/?/, "");
+    var p = raw.split("/").filter(Boolean).map(function (s) { return decodeURIComponent(s); });
+    if (p[0] === "login") return { name: "login" };
+    if (p[0] === "listings" && p[1] === "new") return { name: "newListing" };
+    if (p[0] === "listings" && p[1]) return { name: "listing", id: p[1] };
+    if (p[0] === "listings") return { name: "listings" };
+    if (p[0] === "matches" && p[1] && p[2] === "claim") return { name: "claimForm", matchId: p[1] };
+    if (p[0] === "claims" && p[1]) return { name: "claim", id: p[1] };
+    if (p[0] === "messages" && p[1]) return { name: "thread", claimId: p[1] };
+    if (p[0] === "messages") return { name: "messages" };
+    if (p[0] === "notifications") return { name: "notifications" };
+    return { name: "listings" };
+  }
+
+  function navbar(route) {
+    var u = user(S.session);
+    var current = function (names) { return names.indexOf(route.name) !== -1 ? ' aria-current="page"' : ""; };
+    var unread = unreadCount();
+    return '<nav class="navbar" aria-label="Main">' +
+      '<a class="brand" href="#/listings">Lost and Found</a>' +
+      '<div class="nav-links">' +
+      '<a href="#/listings"' + current(["listings", "listing", "claimForm"]) + ">Listings</a>" +
+      '<a href="#/listings/new"' + current(["newListing"]) + ">Report item</a>" +
+      '<a href="#/messages"' + current(["messages", "thread"]) + ">Messages</a>" +
+      '<a href="#/notifications"' + current(["notifications"]) + ">Notifications" +
+      (unread ? '<span class="count" aria-label="' + unread + ' unread">' + unread + "</span>" : "") + "</a>" +
+      "</div>" +
+      '<div class="nav-right"><span class="who">' + esc(u ? u.name : "") + "</span>" +
+      '<button type="button" data-action="logout">Log out</button></div>' +
+      "</nav>";
+  }
+
+  // ---------- Pages ----------
+
+  var PAGES = {
+    login: function () {
+      var d = S.drafts.login;
+      var accounts = S.users.map(function (u) {
+        return '<button type="button" data-action="quickLogin" data-email="' + esc(u.email) + '">Sign in as ' + esc(u.name) + "</button>";
+      }).join(" ");
+      return '<div class="login-wrap"><div class="card">' +
+        "<h1>Sign in</h1>" +
+        '<div class="form-field"><label for="login-email">Email</label>' +
+        '<input id="login-email" type="email" autocomplete="username" data-bind="drafts.login.email" value="' + esc(d.email) + '"></div>' +
+        '<div class="form-field"><label for="login-pw">Password</label>' +
+        '<input id="login-pw" type="password" autocomplete="current-password" data-bind="drafts.login.password" value="' + esc(d.password) + '"></div>' +
+        '<div class="actions"><button type="button" class="primary" data-action="login">Sign in</button></div>' +
+        '<p class="hint">Sample accounts use the password <code>password</code>.</p>' +
+        '<div class="actions" style="flex-direction:column;align-items:stretch">' + accounts + "</div>" +
+        '<p class="hint" style="margin-top:14px"><button type="button" class="link" data-action="resetData">Restore sample data</button></p>' +
+        "</div></div>";
+    },
+
+    listings: function () {
+      var filter = S.filter;
+      var items = S.listings
+        .filter(function (l) { return filter === "all" || l.type === filter; })
+        .sort(function (a, b) { return b.createdAt - a.createdAt; });
+      var pressed = function (v) { return ' aria-pressed="' + (filter === v) + '"'; };
+      var cards = items.map(function (l) {
+        return '<a class="listing-card" href="#/listings/' + esc(l.id) + '">' +
+          '<span class="badge badge-' + esc(l.type) + '">' + esc(BADGE_LABEL[l.type]) + "</span> " + badge(l.status) +
+          '<h3 style="margin-top:8px">' + esc(l.title) + "</h3>" +
+          '<div class="meta">' + esc(l.category) + " · " + esc(l.location) + "</div>" +
+          '<div class="hint">' + (l.type === "lost" ? "Lost" : "Found") + " " + esc(fmtDate(l.date)) + "</div></a>";
+      }).join("");
+      return '<div class="toolbar"><h1>Listings</h1><a class="btn primary" href="#/listings/new">Report an item</a></div>' +
+        '<div class="toolbar"><div class="segmented">' +
+        '<button type="button" data-action="setFilter" data-value="all"' + pressed("all") + ">All</button>" +
+        '<button type="button" data-action="setFilter" data-value="lost"' + pressed("lost") + ">Lost</button>" +
+        '<button type="button" data-action="setFilter" data-value="found"' + pressed("found") + ">Found</button>" +
+        '</div><span class="hint">' + items.length + " listing" + (items.length === 1 ? "" : "s") + "</span></div>" +
+        (items.length ? '<div class="grid">' + cards + "</div>" : '<p class="empty">No listings match this filter.</p>');
+    },
+
+    newListing: function () {
+      var d = S.drafts.newListing;
+      var typeRadio = function (value, label) {
+        return '<label><input type="radio" name="type" value="' + value + '" data-bind="drafts.newListing.type"' +
+          (d.type === value ? " checked" : "") + "> " + label + "</label>";
+      };
+      var categories = CATEGORIES.map(function (c) {
+        return '<option value="' + esc(c) + '"' + (d.category === c ? " selected" : "") + ">" + esc(c) + "</option>";
+      }).join("");
+      var imgs = d.images.length ? "Selected: " + fileSummary(d.images) : "No images selected.";
+      return '<h1>Report an item</h1><div class="card">' +
+        '<div class="form-field"><span class="field-label">What happened?</span><div class="radio-row">' +
+        typeRadio("lost", "I lost something") + typeRadio("found", "I found something") + "</div></div>" +
+        '<div class="form-field"><label for="title">Title</label>' +
+        '<input id="title" type="text" maxlength="120" data-bind="drafts.newListing.title" value="' + esc(d.title) + '" placeholder="Example: Black leather wallet"></div>' +
+        '<div class="two-column">' +
+        '<div class="form-field"><label for="category">Category</label><select id="category" data-bind="drafts.newListing.category">' + categories + "</select></div>" +
+        '<div class="form-field"><label for="color">Color</label><input id="color" type="text" maxlength="40" data-bind="drafts.newListing.color" value="' + esc(d.color) + '"></div>' +
+        "</div>" +
+        '<div class="two-column">' +
+        '<div class="form-field"><label for="brand">Brand (optional)</label><input id="brand" type="text" maxlength="60" data-bind="drafts.newListing.brand" value="' + esc(d.brand) + '"></div>' +
+        '<div class="form-field"><label for="date">Date lost or found</label><input id="date" type="date" data-bind="drafts.newListing.date" value="' + esc(d.date) + '"></div>' +
+        "</div>" +
+        '<div class="form-field"><label for="location">Location</label><input id="location" type="text" maxlength="160" data-bind="drafts.newListing.location" value="' + esc(d.location) + '" placeholder="Building, floor, or landmark"></div>' +
+        '<div class="form-field"><label for="description">Description</label>' +
+        '<textarea id="description" maxlength="' + MAX_DESC + '" data-bind="drafts.newListing.description" data-counter="cnt-desc" data-max="' + MAX_DESC + '">' + esc(d.description) + "</textarea>" +
+        '<span id="cnt-desc" class="hint">' + d.description.length + " of " + MAX_DESC + " characters</span></div>" +
+        '<div class="form-field"><label for="private">Private details (only you see these; used to verify claims)</label>' +
+        '<textarea id="private" data-bind="drafts.newListing.privateDetails" placeholder="A detail only the owner would know">' + esc(d.privateDetails) + "</textarea></div>" +
+        '<div class="form-field"><label for="images">Images (optional, up to ' + MAX_LISTING_IMAGES + ", JPEG, PNG or WebP, 5 MB each)</label>" +
+        '<input id="images" type="file" multiple accept="image/jpeg,image/png,image/webp" data-files="drafts.newListing.images" data-max="' + MAX_LISTING_IMAGES + '">' +
+        '<span class="hint">' + imgs + "</span></div>" +
+        '<div class="actions"><button type="button" class="primary" data-action="createListing">Publish listing</button>' +
+        '<a class="btn" href="#/listings">Cancel</a></div></div>';
+    },
+
+    listing: function (params) {
+      var l = listing(params.id);
+      if (!l) return '<div class="card"><h1>Listing not found</h1><a href="#/listings">Back to listings</a></div>';
+      var isOwner = l.ownerId === S.session;
+      var owner = user(l.ownerId);
+      var matches = S.matches.filter(function (m) { return m.lostId === l.id || m.foundId === l.id; });
+
+      var matchHtml = "";
+      if (isOwner) {
+        var items = matches.map(function (m) {
+          var other = listing(m.lostId === l.id ? m.foundId : m.lostId);
+          var lost = listing(m.lostId);
+          var found = listing(m.foundId);
+          var action = "";
+          if (lost.ownerId === S.session && found.status === "active") {
+            var mine = activeClaimFor(m.id, S.session);
+            action = mine
+              ? '<span class="hint">Your claim:</span> ' + badge(mine.status) + ' <a href="#/claims/' + esc(mine.id) + '">View claim</a>'
+              : '<a class="btn primary" href="#/matches/' + esc(m.id) + '/claim">Submit a claim for this match</a>';
+          }
+          return '<li class="item"><h3>' + esc(other.title) + "</h3>" +
+            '<div class="hint">' + esc(other.location) + " · " + esc(fmtDate(other.date)) + "</div>" +
+            "<p><strong>Confidence " + m.score.toFixed(2) + " (0 to 1)</strong></p>" +
+            '<div class="actions">' + action + "</div></li>";
+        }).join("");
+        matchHtml = "<h2>Possible matches</h2>" +
+          (items ? '<ul style="list-style:none;padding:0;margin:0">' + items + "</ul>"
+            : '<p class="empty">No possible matches yet. A match needs a score of 0.60 or higher.</p>');
+      }
+
+      var claimHtml = "";
+      if (isOwner && l.type === "found") {
+        var claims = S.claims.filter(function (c) { return c.foundId === l.id; });
+        claimHtml = "<h2>Claims</h2>" + (claims.length
+          ? claims.map(function (c) {
+              return '<div class="item"><strong>' + esc(user(c.claimantId).name) + "</strong> " + badge(c.status) +
+                ' <a href="#/claims/' + esc(c.id) + '">Review</a></div>';
+            }).join("")
+          : '<p class="empty">No claims yet.</p>');
+      }
+
+      var photos = l.images.length
+        ? l.images.map(function (name, i) { return '<span class="photo-placeholder">Image ' + (i + 1) + ": " + esc(name) + "</span>"; }).join("")
+        : "";
+
+      return '<div class="card">' +
+        '<div class="actions"><span class="badge badge-' + esc(l.type) + '">' + esc(BADGE_LABEL[l.type]) + "</span>" + badge(l.status) + "</div>" +
+        '<h1 style="margin-top:10px">' + esc(l.title) + "</h1>" +
+        '<dl class="details">' +
+        "<dt>Category</dt><dd>" + esc(l.category) + "</dd>" +
+        "<dt>Color</dt><dd>" + esc(l.color || "Not given") + "</dd>" +
+        "<dt>Brand</dt><dd>" + esc(l.brand || "Not given") + "</dd>" +
+        "<dt>Location</dt><dd>" + esc(l.location) + "</dd>" +
+        "<dt>Date</dt><dd>" + esc(fmtDate(l.date)) + "</dd>" +
+        "<dt>Posted by</dt><dd>" + esc(owner.name) + "</dd></dl>" +
+        '<p style="margin-top:14px">' + esc(l.description || "No description.") + "</p>" +
+        (photos ? "<div>" + photos + "</div>" : "") +
+        (isOwner ? '<div class="panel" style="margin-top:14px"><h3>Private details (only you see this)</h3><p>' + esc(l.privateDetails || "None") + "</p></div>" : "") +
+        (l.status === "resolved" ? '<p class="hint">This item has been resolved.</p>' : "") +
+        "</div>" +
+        (isOwner ? '<div class="card"><h2 style="margin-top:0">' + (l.type === "lost" ? "Your lost item" : "Your found item") + "</h2>" + matchHtml + claimHtml + "</div>" : "") +
+        '<p><a href="#/listings">Back to listings</a></p>';
+    },
+
+    claimForm: function (params) {
+      var notice = function (text) {
+        return '<div class="card"><h1>Claim</h1><p>' + esc(text) + '</p><a href="#/listings">Back to listings</a></div>';
+      };
+      var m = matchById(params.matchId);
+      if (!m) return notice("This match is no longer available for claiming.");
+      var lost = listing(m.lostId), found = listing(m.foundId);
+      if (lost.ownerId !== S.session) return notice("Only the owner of the lost item can claim this match.");
+      if (found.status !== "active") return notice("This match is no longer available for claiming.");
+      var existing = activeClaimFor(m.id, S.session);
+      if (existing) return '<div class="card"><h1>Claim</h1><p>You already have an active claim for this match.</p><a href="#/claims/' + esc(existing.id) + '">View your claim</a></div>';
+
+      var d = claimDraft(m.id);
+      var head = '<h1>Claim: ' + esc(found.title) + "</h1>" +
+        '<p class="hint">Found at ' + esc(found.location) + " · confidence " + m.score.toFixed(2) + "</p>";
+
+      if (d.reviewing) {
+        return head + '<div class="card"><h2 style="margin-top:0">Review your claim</h2>' +
+          '<p class="preview">' + esc(d.explanation) + "</p>" +
+          "<p>Photos: " + fileSummary(d.photos) + "</p>" +
+          '<div class="actions"><button type="button" data-action="editClaim" data-id="' + esc(m.id) + '">Edit</button>' +
+          '<button type="button" class="primary" data-action="submitClaim" data-id="' + esc(m.id) + '">Submit claim</button></div></div>';
+      }
+
+      return head + '<div class="card">' +
+        '<div class="form-field"><label for="expl">Why is this item yours?</label>' +
+        '<textarea id="expl" maxlength="' + MAX_TEXT + '" data-bind="drafts.claim.' + esc(m.id) + '.explanation" data-counter="cnt-expl" data-max="' + MAX_TEXT + '" placeholder="Describe the details only the owner would know.">' + esc(d.explanation) + "</textarea>" +
+        '<span id="cnt-expl" class="hint">' + d.explanation.length + " of " + MAX_TEXT + " characters</span></div>" +
+        '<div class="form-field"><label for="photos">Photos (optional, up to ' + MAX_CLAIM_PHOTOS + ", JPEG, PNG or WebP, 5 MB each)</label>" +
+        '<input id="photos" type="file" multiple accept="image/jpeg,image/png,image/webp" data-files="drafts.claim.' + esc(m.id) + '.photos" data-max="' + MAX_CLAIM_PHOTOS + '">' +
+        '<span class="hint">' + (d.photos.length ? "Selected: " + fileSummary(d.photos) : "No photos selected.") + "</span></div>" +
+        '<div class="actions"><button type="button" class="primary" data-action="reviewClaim" data-id="' + esc(m.id) + '">Review claim</button>' +
+        '<a class="btn" href="#/listings/' + esc(lost.id) + '">Cancel</a></div></div>';
+    },
+
+    claim: function (params) {
+      var c = claimById(params.id);
+      if (!c) return '<div class="card"><h1>Claim not found</h1><a href="#/listings">Back to listings</a></div>';
+      var found = listing(c.foundId);
+      var isFinder = found.ownerId === S.session;
+      var isClaimant = c.claimantId === S.session;
+      if (!isFinder && !isClaimant) return '<div class="card"><h1>Claim</h1><p>You do not have access to this claim.</p></div>';
+
+      var head = '<div class="card"><div class="actions"><h1 style="margin:0">Claim ' + esc(c.id) + "</h1>" + badge(c.status) + "</div>" +
+        '<p class="hint">For <a href="#/listings/' + esc(found.id) + '">' + esc(found.title) + "</a>, found at " + esc(found.location) + "</p>";
+
+      if (isClaimant) {
+        var msg = c.status === "pending" ? "Waiting for the found owner to decide."
+          : c.status === "approved" ? "Approved. Open the message thread to arrange the handoff."
+          : c.status === "rejected" ? "This claim was not approved."
+          : "Another claim was approved for this item.";
+        return head +
+          '<h2>Your explanation</h2><p class="preview">' + esc(c.explanation) + "</p>" +
+          "<p>Photos: " + fileSummary(c.photos) + "</p>" +
+          '<p class="hint">' + msg + "</p>" +
+          (c.decisionNote ? "<p><strong>Note from the found owner:</strong> " + esc(c.decisionNote) + "</p>" : "") +
+          (c.status === "approved" ? '<p><a class="btn primary" href="#/messages/' + esc(c.id) + '">Open messages</a></p>' : "") +
+          "</div>";
+      }
+
+      var photos = c.photos.length
+        ? c.photos.map(function (p, i) { return '<span class="photo-placeholder">Photo ' + (i + 1) + ": " + esc(p.name) + "</span>"; }).join("")
+        : '<p class="hint">No photos attached.</p>';
+      var canDecide = c.status === "pending" || c.status === "rejected";
+      var decision = "";
+      if (canDecide) {
+        decision = '<div class="card" style="margin-top:14px"><h2 style="margin-top:0">Your decision</h2>' +
+          '<fieldset style="border:0;padding:0;margin:0 0 12px"><div class="radio-row">' +
+          '<label><input type="radio" name="decision" value="approve"> Approve</label>' +
+          '<label><input type="radio" name="decision" value="reject"' + (c.status !== "pending" ? " disabled" : "") + "> Reject</label>" +
+          "</div></fieldset>" +
+          '<div class="form-field"><label for="note">Note for the claimant (optional)</label>' +
+          '<textarea id="note" maxlength="' + MAX_TEXT + '" data-bind="drafts.decision.' + esc(c.id) + '.note">' + esc(getPath("drafts.decision." + c.id + ".note") || "") + "</textarea></div>" +
+          '<div class="actions"><button type="button" class="primary" data-action="decide" data-id="' + esc(c.id) + '">Save decision</button></div>' +
+          (c.status === "rejected" ? '<p class="hint">A rejected claim can still be approved after reconsideration.</p>' : "") +
+          "</div>";
+      }
+      return head +
+        '<div class="two-column"><div class="panel"><h3>Claimant\'s explanation</h3><p class="preview">' + esc(c.explanation) + "</p><div>" + photos + "</div></div>" +
+        '<div class="panel"><h3>Private details (found owner only)</h3><p>' + esc(found.privateDetails) + "</p>" +
+        '<p class="hint">Compare the claimant\'s answer with these details before deciding.</p></div></div>' +
+        (c.decisionNote ? "<p><strong>Note sent to claimant:</strong> " + esc(c.decisionNote) + "</p>" : "") +
+        (c.status === "approved" ? '<p><a class="btn primary" href="#/messages/' + esc(c.id) + '">Open messages</a></p>' : "") +
+        "</div>" + decision;
+    },
+
+    messages: function () {
+      var threads = S.claims.filter(function (c) {
+        return c.status === "approved" && (c.claimantId === S.session || listing(c.foundId).ownerId === S.session);
+      });
+      if (!threads.length) return '<h1>Messages</h1><p class="empty">Message threads open after a claim is approved.</p>';
+      return "<h1>Messages</h1>" + threads.map(function (c) {
+        var log = S.threads[c.id] || [];
+        var last = log[log.length - 1];
+        return '<a class="listing-card" href="#/messages/' + esc(c.id) + '" style="margin-bottom:10px"><h3>' + esc(listing(c.foundId).title) + "</h3>" +
+          '<div class="hint">You are the ' + (c.claimantId === S.session ? "Claimant" : "Finder") + "</div>" +
+          (last ? '<div class="meta">' + esc(last.body.slice(0, 90)) + "</div>" : "") + "</a>";
+      }).join("");
+    },
+
+    thread: function (params) {
+      var c = claimById(params.claimId);
+      if (!c) return '<div class="card"><h1>Messages</h1><p>This conversation does not exist.</p></div>';
+      var found = listing(c.foundId);
+      var isClaimant = c.claimantId === S.session;
+      var isFinder = found.ownerId === S.session;
+      if (!isClaimant && !isFinder) return '<div class="card"><h1>Messages</h1><p>You do not have access to this conversation.</p></div>';
+      if (c.status !== "approved") return '<div class="card"><h1>Messages</h1><p>Messages open only after a claim is approved.</p></div>';
+
+      var myRole = isClaimant ? "Claimant" : "Finder";
+      var log = S.threads[c.id] || [];
+      var items = log.map(function (m) {
+        if (m.kind === "system") return '<li class="bubble is-system"><p>' + esc(m.body) + '</p><p class="hint">' + esc(fmtTime(m.at)) + "</p></li>";
+        return '<li class="bubble' + (m.role === "Finder" ? " is-finder" : "") + '"><p class="hint"><strong>' + esc(m.role) + "</strong> · " + esc(fmtTime(m.at)) + "</p>" +
+          "<p>" + esc(m.body) + "</p>" + (m.contact ? '<p class="hint">This message included contact details.</p>' : "") + "</li>";
+      }).join("");
+      var draft = getPath("drafts.msg." + c.id) || "";
+
+      return '<div class="toolbar"><div><h1 style="margin:0">' + esc(found.title) + '</h1><p class="hint">You are the ' + myRole + ". Contact details are not shown here; arrange the handoff in the thread.</p></div>" + badge("approved") + "</div>" +
+        '<div class="card"><ol class="bubble-list" aria-label="Conversation" style="padding-left:0">' + items + "</ol>" +
+        '<div class="form-field"><label for="msg">Message</label>' +
+        '<textarea id="msg" maxlength="' + MAX_TEXT + '" data-bind="drafts.msg.' + esc(c.id) + '" data-counter="cnt-msg" data-max="' + MAX_TEXT + '">' + esc(draft) + "</textarea>" +
+        '<span id="cnt-msg" class="hint">' + draft.length + " of " + MAX_TEXT + " characters</span></div>" +
+        '<div class="actions"><button type="button" class="primary" data-action="sendMessage" data-id="' + esc(c.id) + '">Send</button></div></div>';
+    },
+
+    notifications: function () {
+      var mine = S.notifications.filter(function (n) { return n.userId === S.session; });
+      var me = user(S.session);
+      var unread = mine.filter(function (n) { return !n.read; }).length;
+      var list = mine.length ? mine.map(function (n) {
+        return '<div class="item' + (n.read ? "" : " is-unread") + '">' +
+          "<p>" + (n.read ? "" : "<strong>New:</strong> ") + esc(n.text) + "</p>" +
+          '<div class="hint">' + esc(fmtTime(n.at)) + " · " +
+          (n.emailStatus === "sent" ? "Email sent" : "Email not sent (email notifications are off)") + "</div>" +
+          '<div class="actions" style="margin-top:8px">' +
+          '<a class="btn" href="' + esc(n.path) + '" data-action="markRead" data-id="' + esc(n.id) + '">Open</a>' +
+          (n.read ? "" : '<button type="button" data-action="markRead" data-id="' + esc(n.id) + '">Mark read</button>') +
+          "</div></div>";
+      }).join("") : '<p class="empty">No notifications yet.</p>';
+
+      return '<div class="toolbar"><h1 style="margin:0">Notifications</h1>' +
+        '<span class="hint">' + unread + " unread</span></div>" +
+        '<div class="card"><div class="actions" style="justify-content:space-between">' +
+        '<label class="checkbox-row"><input type="checkbox" data-action="toggleEmail"' + (me.emailNotifications ? " checked" : "") + "> Also email me about matches, claims, messages and resolutions</label>" +
+        (unread ? '<button type="button" data-action="markAll">Mark all as read</button>' : "") +
+        "</div><p class=\"hint\">Turning email off does not stop in-app notifications. Email never includes contact details.</p></div>" +
+        list;
+    }
+  };
+
+  // ---------- Actions ----------
+
+  var ACTIONS = {
+    login: function () {
+      var email = (S.drafts.login.email || "").trim().toLowerCase();
+      var pw = S.drafts.login.password || "";
+      var u = S.users.find(function (x) { return x.email === email; });
+      if (!u || pw !== "password") { fail("Email or password is incorrect."); return; }
+      S.session = u.id;
+      S.drafts.login = { email: "", password: "" };
+      ok("Signed in as " + u.name + ".");
+      location.hash = "#/listings";
+    },
+
+    quickLogin: function (el) {
+      S.drafts.login.email = el.getAttribute("data-email");
+      S.drafts.login.password = "password";
+      ACTIONS.login();
+    },
+
+    logout: function () {
+      S.session = null;
+      info("You have signed out.");
+      location.hash = "#/login";
+    },
+
+    resetData: function () {
+      resetAll();
+      info("Sample data restored.");
+    },
+
+    setFilter: function (el) { S.filter = el.getAttribute("data-value"); },
+
+    createListing: function () {
+      var d = S.drafts.newListing;
+      if (!d.title.trim()) return fail("Title is required.");
+      if (!d.location.trim()) return fail("Location is required.");
+      if (!d.date) return fail("Choose the date the item was lost or found.");
+      if (d.description.length > MAX_DESC) return fail("Description must be 500 characters or fewer.");
+      if (d.privateDetails.length > MAX_TEXT) return fail("Private details must be 1000 characters or fewer.");
+      if (d.images.length > MAX_LISTING_IMAGES) return fail("You can attach up to " + MAX_LISTING_IMAGES + " images.");
+
+      var item = {
+        id: (d.type === "lost" ? "L" : "F") + "-" + (S.seq += 1),
+        type: d.type, title: d.title.trim(), category: d.category || "Other", color: d.color.trim(),
+        brand: d.brand.trim(), location: d.location.trim(), date: d.date,
+        description: d.description.trim(), privateDetails: d.privateDetails.trim(),
+        images: d.images.map(function (f) { return f.name; }), ownerId: S.session,
+        status: "active", createdAt: Date.now()
+      };
+      S.listings.push(item);
+      var created = runMatching(item);
+      S.drafts.newListing = blankListing();
+      ok("Listing published." + (created.length ? " " + created.length + " possible match" + (created.length > 1 ? "es" : "") + " found." : ""));
+      location.hash = "#/listings/" + item.id;
+    },
+
+    reviewClaim: function (el) {
+      var d = claimDraft(el.getAttribute("data-id"));
+      if (!d.explanation.trim()) return fail("Describe why this item is yours.");
+      if (d.explanation.length > MAX_TEXT) return fail("Explanations must be 1000 characters or fewer.");
+      d.reviewing = true;
+    },
+
+    editClaim: function (el) { claimDraft(el.getAttribute("data-id")).reviewing = false; },
+
+    submitClaim: function (el) {
+      var matchId = el.getAttribute("data-id");
+      var m = matchById(matchId);
+      var d = claimDraft(matchId);
+      if (!m) return fail("This match is no longer available for claiming.");
+      var lost = listing(m.lostId), found = listing(m.foundId);
+      if (lost.ownerId !== S.session) return fail("Only the owner of the lost item can claim this match.");
+      if (found.status !== "active") return fail("This match is no longer available for claiming.");
+      if (activeClaimFor(m.id, S.session)) return fail("You already have an active claim for this match.");
+      if (!d.explanation.trim()) return fail("Describe why this item is yours.");
+
+      var claim = {
+        id: nextId("C"), matchId: m.id, lostId: lost.id, foundId: found.id, claimantId: S.session,
+        status: "pending", explanation: d.explanation.trim(),
+        photos: d.photos.map(function (f) { return { name: f.name, size: f.size }; }),
+        decisionNote: "", createdAt: Date.now()
+      };
+      S.claims.push(claim);
+      delete S.drafts.claim[m.id];
+      notify(found.ownerId, user(S.session).name + " submitted a claim on your found item “" + found.title + "”.", "claim", "#/claims/" + claim.id);
+      ok("Claim submitted. The found owner will review it.");
+      location.hash = "#/claims/" + claim.id;
+    },
+
+    decide: function (el) {
+      var claim = claimById(el.getAttribute("data-id"));
+      if (!claim) return fail("This claim no longer exists.");
+      var found = listing(claim.foundId);
+      if (found.ownerId !== S.session) return fail("Only the found owner can decide on this claim.");
+      var choice = document.querySelector('input[name="decision"]:checked');
+      if (!choice) return fail("Choose approve or reject first.");
+      var note = (getPath("drafts.decision." + claim.id + ".note") || "").trim();
+      if (note.length > MAX_TEXT) return fail("Notes must be 1000 characters or fewer.");
+
+      if (choice.value === "reject") {
+        if (claim.status !== "pending") return fail("Only pending claims can be rejected.");
+        claim.status = "rejected";
+        claim.decisionNote = note;
+        notify(claim.claimantId, "Your claim " + claim.id + " on “" + found.title + "” was not approved. Open the claim to read the note.", "claim", "#/claims/" + claim.id);
+        return warn("Claim rejected. The claimant has been notified.");
+      }
+
+      if (claim.status === "approved") return info("This claim is already approved.");
+      claim.status = "approved";
+      claim.decisionNote = note;
+      found.status = "resolved";
+      S.claims.forEach(function (other) {
+        if (other.foundId === found.id && other.id !== claim.id && other.status === "pending") {
+          other.status = "closed";
+          notify(other.claimantId, "Another claim was approved for “" + found.title + "”, so your claim " + other.id + " is closed.", "claim", "#/claims/" + other.id);
+        }
+      });
+      S.matches = S.matches.filter(function (m) { return m.foundId !== found.id; });
+      S.threads[claim.id] = [{
+        kind: "system", body: "Messaging is open for this claim. Use this thread to arrange the handoff.", at: Date.now()
+      }];
+      notify(claim.claimantId, "Your claim " + claim.id + " was approved. Open the thread to arrange the handoff.", "claim", "#/messages/" + claim.id);
+      ok("Claim approved. The listing is resolved and messaging is open.");
+    },
+
+    sendMessage: function (el) {
+      var claim = claimById(el.getAttribute("data-id"));
+      if (!claim) return fail("This conversation does not exist.");
+      var found = listing(claim.foundId);
+      if (claim.claimantId !== S.session && found.ownerId !== S.session) return fail("You do not have access to this conversation.");
+      if (claim.status !== "approved") return fail("Messages open only after a claim is approved.");
+      var body = (getPath("drafts.msg." + claim.id) || "").trim();
+      if (!body) return fail("Message text is required.");
+      if (body.length > MAX_TEXT) return fail("Messages must be 1000 characters or fewer.");
+      var contact = CONTACT.test(body);
+      (S.threads[claim.id] = S.threads[claim.id] || []).push({
+        kind: "user", role: claim.claimantId === S.session ? "Claimant" : "Finder",
+        body: body, at: Date.now(), contact: contact
+      });
+      S.drafts.msg[claim.id] = "";
+      if (contact) warn("Message sent, but it looks like it contains contact details. Keep contact details out of messages.");
+      else ok("Message sent.");
+    },
+
+    markRead: function (el) {
+      var id = el.getAttribute("data-id");
+      S.notifications.forEach(function (n) { if (n.id === id) n.read = true; });
+    },
+
+    markAll: function () {
+      S.notifications.forEach(function (n) { if (n.userId === S.session) n.read = true; });
+    }
+  };
+
+  // ---------- Rendering and events ----------
+
+  function render() {
+    var route = currentRoute();
+    if (!S.session && route.name !== "login") {
+      if (location.hash !== "#/login") location.hash = "#/login";
+      route = { name: "login" };
+    }
+    if (S.session && route.name === "login") {
+      if (location.hash !== "#/listings") location.hash = "#/listings";
+      route = { name: "listings" };
+    }
+    var f = S.flash;
+    S.flash = null;
+    var body = PAGES[route.name](route);
+    document.getElementById("app").innerHTML =
+      (S.session ? navbar(route) : "") +
+      '<main class="container">' + (f ? flashHtml(f) : "") + body + "</main>";
+  }
+
+  document.addEventListener("click", function (e) {
+    var el = e.target.closest("[data-action]");
+    if (!el || el.disabled) return;
+    var action = el.getAttribute("data-action");
+    // Checkboxes are handled by the change event; re-rendering on click would discard their new state.
+    if (el.tagName === "INPUT") return;
+    if (el.tagName === "A") {
+      // Links keep their normal navigation. Marking as read happens here, then the hash change renders.
+      if (action === "markRead") { ACTIONS.markRead(el); render(); }
+      return;
+    }
+    if (ACTIONS[action]) {
+      e.preventDefault();
+      var before = location.hash;
+      ACTIONS[action](el);
+      // If the action changed the URL, the hashchange listener renders once with the flash message.
+      if (location.hash === before) render();
+    }
+  });
+
+  document.addEventListener("input", function (e) {
+    var t = e.target;
+    if (t.getAttribute && t.getAttribute("data-bind")) setPath(t.getAttribute("data-bind"), t.value);
+    if (t.getAttribute && t.getAttribute("data-counter")) {
+      var node = document.getElementById(t.getAttribute("data-counter"));
+      if (node) node.textContent = t.value.length + " of " + t.getAttribute("data-max") + " characters";
+    }
+  });
+
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t.getAttribute("data-bind") && t.type === "radio") {
+      setPath(t.getAttribute("data-bind"), t.value);
+      render();
+      return;
+    }
+    if (t.getAttribute("data-files")) {
+      handleFiles(t);
+      render();
+      return;
+    }
+    if (t.getAttribute("data-action") === "toggleEmail") {
+      var me = user(S.session);
+      me.emailNotifications = t.checked;
+      info(t.checked ? "Email notifications are on." : "Email notifications are off. In-app notifications still appear.");
+      render();
+    }
+  });
+
+  function handleFiles(input) {
+    var path = input.getAttribute("data-files");
+    var max = Number(input.getAttribute("data-max"));
+    var files = Array.prototype.slice.call(input.files || []);
+    var error = "";
+    if (files.length > max) error = "You can attach up to " + max + " photo" + (max > 1 ? "s" : "") + ".";
+    for (var i = 0; !error && i < files.length; i++) {
+      if (PHOTO_TYPES.indexOf(files[i].type) === -1) error = "Photos must be JPEG, PNG, or WebP.";
+      else if (files[i].size > MAX_PHOTO_BYTES) error = "Each photo must be 5 MB or smaller.";
+    }
+    if (error) {
+      input.value = "";
+      setPath(path, []);
+      fail(error);
+      return;
+    }
+    setPath(path, files.map(function (f) { return { name: f.name, size: f.size }; }));
+  }
+
+  window.addEventListener("hashchange", render);
+
+  resetAll();
+  render();
+})();
+</script>
+</body>
+</html>
