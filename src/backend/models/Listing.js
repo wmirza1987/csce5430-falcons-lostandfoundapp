@@ -73,7 +73,7 @@ const listingSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["active", "pending_return", "resolved"],
+      enum: ["active", "resolved"],
       default: "active",
     },
 
@@ -94,13 +94,43 @@ const listingSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+    // FR-ADM-01: a moderator may hide a reported listing. Hidden listings stay
+    // in the database for audit and restoration but leave public browse and
+    // map results until a moderator restores them.
+    isHidden: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    hiddenReason: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: "",
+      select: false,
+    },
+
+    hiddenBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      select: false,
+    },
+
+    hiddenAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
   },
   {
     timestamps: true,
   }
 );
 
-listingSchema.index({ isDeleted: 1, status: 1, type: 1, createdAt: -1 });
+listingSchema.index({ isDeleted: 1, isHidden: 1, status: 1, type: 1, createdAt: -1 });
 listingSchema.index({ category: 1, "location.building": 1, "location.zone": 1 });
 
 listingSchema.pre("validate", function () {

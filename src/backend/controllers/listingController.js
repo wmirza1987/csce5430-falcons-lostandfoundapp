@@ -1,8 +1,8 @@
 const Listing = require("../models/Listing");
 const { filesToImageUrls } = require("../middleware/uploadMiddleware");
 const {
-  refreshMatchesForListing,
   removeMatchesForListing,
+  scheduleMatchRefresh,
 } = require("../services/matchingService");
 
 const MAX_PAGE_SIZE = 20;
@@ -78,9 +78,8 @@ const createListing = async (req, res) => {
       createdBy: req.user._id,
     });
 
-    await refreshMatchesForListing(listing).catch((error) => {
-      logError("Unable to refresh matches after listing creation", error);
-    });
+    // FR-MATCH-01: matching runs in the background and never blocks creation.
+    scheduleMatchRefresh(listing);
 
     return res.status(201).json({
       message: "Listing created successfully.",
@@ -129,6 +128,7 @@ const getListings = async (req, res) => {
 
     const query = {
       isDeleted: false,
+      isHidden: { $ne: true },
       status: "active",
     };
 
@@ -229,14 +229,16 @@ const getListingById = async (req, res) => {
       .select("+privateDetails")
       .populate("createdBy", "firstName lastName");
 
-    if (!listing || listing.isDeleted) {
+    const isOwner =
+      req.user && listing.createdBy?._id.toString() === req.user._id.toString();
+
+    // FR-ADM-01: hidden listings leave public views. The owner may still see
+    // their own listing; everyone else gets a not-found response.
+    if (!listing || listing.isDeleted || (listing.isHidden && !isOwner)) {
       return res.status(404).json({
         message: "Listing not found.",
       });
     }
-
-    const isOwner =
-      req.user && listing.createdBy?._id.toString() === req.user._id.toString();
 
     const responseListing = listing.toObject();
 
@@ -311,9 +313,8 @@ const updateListing = async (req, res) => {
 
     await listing.save();
 
-    await refreshMatchesForListing(listing).catch((error) => {
-      logError("Unable to refresh matches after listing update", error);
-    });
+    // FR-MATCH-02: suggestions are recomputed after every edit, in the background.
+    scheduleMatchRefresh(listing);
 
     return res.status(200).json({
       message: "Listing updated successfully.",
