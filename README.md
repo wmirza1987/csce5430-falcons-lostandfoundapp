@@ -77,8 +77,31 @@ csce5430-falcons-lostandfoundapp/
 
 - **Deliverable 1** — Project Proposal, Project Plan, and Risk Management: `reports/Team_Falcons_-_Deliverable_1.docx`
 - **Deliverable 2** — Requirements Specifications, System Structure, and Development Phase Plan: `reports/Team_Falcons_-_Deliverable_2.docx`
+- **Deliverable 4** — Phase 2 implementation report: `reports/deliverable-4/Deliverable-4-Report.md`
+- **Deliverable 5** — Phase 3 audit and implementation changes: `reports/deliverable-5/Deliverable-5-Audit-and-Changes.md`
 
 See each deliverable's `note-deliverable-*.txt` file at the repository root for the full manifest of files submitted with that milestone.
+
+### Phase 3 API quick reference
+
+All routes are versioned under `/api/v1`. Protected routes require `Authorization: Bearer <token>`.
+
+| Method | Route | Access | Purpose |
+|---|---|---|---|
+| POST | `/reports` | Signed-in user | Report a listing or message (reason 10–500 chars) |
+| GET | `/reports` | Moderator/Admin | Moderation queue |
+| GET | `/reports/:id` | Moderator/Admin | One report |
+| PATCH | `/reports/:id/decision` | Moderator/Admin | `hide`, `restore`, or `dismiss` with a reason |
+| GET | `/map/buildings` | Public | Approximate campus building catalog and zones |
+| GET | `/map/listings` | Public | Listing pins by building/zone/type, plus list view |
+| GET | `/admin/users` | Admin | Account list |
+| PATCH | `/admin/users/:id/role` | Admin | Set `user` or `moderator` (admin role not assignable) |
+| PATCH | `/admin/users/:id/active` | Admin | Deactivate/reactivate an account |
+| GET/POST/PATCH | `/admin/categories` | Admin | Manage the item category catalog |
+| GET | `/admin/audit` | Admin | Non-content audit records |
+| GET | `/admin/analytics` | Admin | Aggregate counts, resolution rate, categories, hotspots |
+
+Messaging refreshes no more than once every 15 seconds in the client, with a manual Refresh button; no sockets are required. Moderator thread access requires an open or reviewing report linked to that thread and is audit logged.
 
 ---
 
@@ -124,6 +147,8 @@ Backend (`src/backend/.env`):
 | `SMTP_USER` | Email provider account username |
 | `SMTP_PASS` | Email provider account password or API key |
 | `SMTP_FROM` | "From" address used on outgoing email |
+| `EVIDENCE_ENCRYPTION_KEY` | Base64 or hex 32-byte key for AES-256-GCM encryption of claim evidence. If unset, a key is derived from `JWT_SECRET`; set it explicitly in production |
+| `MATCH_THRESHOLD` | Optional. Minimum match score (0 to 1) that creates a potential match. Default `0.6` |
 
 Frontend (`src/frontend/.env`):
 
@@ -150,11 +175,14 @@ pnpm dev           # starts the React development server
 ### Running Tests
 
 ```bash
-# from src/backend (uses MONGODB_URI_TEST or the local _test database)
-pnpm test
+# from src/backend (uses MONGODB_URI_TEST or the local _test database;
+# a MongoDB server must be reachable before the tests start)
+pnpm test          # 9 suites, 113 tests: auth, listings, matching, claims,
+                   # notifications, messaging, reporting/moderation, admin/analytics, campus map
 
 # from src/frontend
 pnpm build         # production build check
+pnpm lint          # oxlint static checks
 ```
 
 ### Deployment
