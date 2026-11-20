@@ -1,160 +1,398 @@
+const fs = require("fs");
+const path = require("path");
 const request = require("supertest");
 const app = require("../app");
 const Claim = require("../models/Claim");
 const Listing = require("../models/Listing");
-const {
-  authHeader,
-  createListing,
-  createUser,
-} = require("./helpers");
+const Message = require("../models/Message");
+const Notification = require("../models/Notification");
+const { authHeader, createListing, createMatch, createMatchedPair, createUser } = require("./helpers");
 
-describe("Claim workflow", () => {
-  test("submits private evidence, closes competing claims, and resolves", async () => {
-    const owner = await createUser();
-    const claimant = await createUser();
-    const otherClaimant = await createUser();
+const EVIDENCE_DIR = path.join(__dirname, "..", "private", "evidence");
+const PHOTO = Buffer.from("not-really-a-jpeg-but-typed-as-one");
+const EXPLANATION = "The case has my initials engraved and I lost it on Monday near the desk.";
 
-    const listing = await createListing(owner, {
-      type: "found",
-      title: "Found AirPods",
-      description: "Found black AirPods in Willis Library",
+function submitClaim(claimant, match, { text = EXPLANATION, photos = [] } = {}) {
+  let req = request(app)
+    .post(`/api/v1/matches/${match._id}/claims`)
+    .set(authHeader(claimant));
+
+  if (text !== null) {
+    req = req.field("explanation", text);
+  }
+
+  for (const photo of photos) {
+    req = req.attach("evidence", photo, { filename: "evidence.jpg", contentType: "image/jpeg" });
+  }
+
+  return req;
+}
+
+async function submittedClaim(setup) {
+  const response = await submitClaim(setup.claimant, setup.match);
+  expect(response.statusCode).toBe(201);
+  return response.body.claim;
+}
+
+describe("Claim submission (FR-CLM-01)", () => {
+  test("UT-CLM-01: a claimant submits valid evidence text and the claim is pending", async () => {
+    const setup = await createMatchedPair();
+    const response = await submitClaim(setup.claimant, setup.match);
+
+    expect(response.statusCode).toBe(201);
+    expect(response.body.claim.status).toBe("pending");
+    expect(response.body.claim.explanation).toBe(EXPLANATION);
+  });
+
+  test("evidence text is stored encrypted at rest, not as plain text", async () => {
+    const setup = await createMatchedPair();
+    const claim = await submittedClaim(setup);
+    const stored = await Claim.findById(claim.id).select("+explanationCiphertext");
+
+    expect(stored.explanationCiphertext).not.toContain("initials");
+    expect(stored.explanationCiphertext.split(":")).toHaveLength(3);
+  });
+
+  test("UT-CLM-02: a claim with two evidence photos is accepted and the photos are encrypted on disk", async () => {
+    const setup = await createMatchedPair();
+    const response = await submitClaim(setup.claimant, setup.match, {
+      photos: [PHOTO, PHOTO],
     });
 
-    const firstClaim = await request(app)
-      .post(`/api/v1/listings/${listing._id}/claims`)
-      .set(authHeader(claimant))
-      .send({
-        explanation: "I lost these on Monday near the library desk.",
-        privateDetails: ["Serial suffix 4821", "Small blue sticker on the case"],
-      });
+    expect(response.statusCode).toBe(201);
+    expect(response.body.claim.evidence).toHaveLength(2);
 
-    expect(firstClaim.statusCode).toBe(201);
-    expect(firstClaim.body.claim.status).toBe("pending");
-    expect(firstClaim.body.claim.privateDetails).toBeUndefined();
-
-    const otherClaim = await request(app)
-      .post(`/api/v1/listings/${listing._id}/claims`)
-      .set(authHeader(otherClaimant))
-      .send({
-        explanation: "These are mine; I left them in a study room.",
-        privateDetails: ["Name written inside the lid", "Cracked left ear tip"],
-      });
-
-    expect(otherClaim.statusCode).toBe(201);
-
-    const forbiddenReview = await request(app)
-      .get(`/api/v1/listings/${listing._id}/claims`)
-      .set(authHeader(otherClaimant));
-
-    expect(forbiddenReview.statusCode).toBe(403);
-
-    const ownerReview = await request(app)
-      .get(`/api/v1/listings/${listing._id}/claims`)
-      .set(authHeader(owner));
-
-    expect(ownerReview.statusCode).toBe(200);
-    expect(ownerReview.body.claims).toHaveLength(2);
-    expect(ownerReview.body.claims[0].privateDetails).toHaveLength(2);
-
-    const approval = await request(app)
-      .patch(`/api/v1/claims/${firstClaim.body.claim._id}/decision`)
-      .set(authHeader(owner))
-      .send({ action: "approve", decisionNote: "Evidence matches." });
-
-    expect(approval.statusCode).toBe(200);
-    expect(approval.body.claim.status).toBe("approved");
-    expect(approval.body.listingStatus).toBe("pending_return");
-
-    const secondApproval = await request(app)
-      .patch(`/api/v1/claims/${otherClaim.body.claim._id}/decision`)
-      .set(authHeader(owner))
-      .send({ action: "approve" });
-
-    expect(secondApproval.statusCode).toBe(409);
-
-    const closedClaim = await Claim.findById(otherClaim.body.claim._id);
-    expect(closedClaim.status).toBe("closed");
-
-    const resolution = await request(app)
-      .patch(`/api/v1/listings/${listing._id}/resolve`)
-      .set(authHeader(owner))
-      .send({});
-
-    expect(resolution.statusCode).toBe(200);
-    expect(resolution.body.listing.status).toBe("resolved");
-
-    const updatedListing = await Listing.findById(listing._id);
-    expect(updatedListing.status).toBe("resolved");
-
-    const claimantNotifications = await request(app)
-      .get("/api/v1/notifications")
-      .set(authHeader(claimant));
-
-    expect(claimantNotifications.statusCode).toBe(200);
-    expect(
-      claimantNotifications.body.notifications.some(
-        (notification) => notification.type === "claim_decision"
-      )
-    ).toBe(true);
-    expect(
-      claimantNotifications.body.notifications.some(
-        (notification) => notification.type === "resolution"
-      )
-    ).toBe(true);
-
-    const otherNotifications = await request(app)
-      .get("/api/v1/notifications")
-      .set(authHeader(otherClaimant));
-
-    expect(
-      otherNotifications.body.notifications.some(
-        (notification) => notification.type === "claim_closed"
-      )
-    ).toBe(true);
+    const stored = await Claim.findById(response.body.claim.id).select("+evidenceImages");
+    const onDisk = fs.readFileSync(path.join(EVIDENCE_DIR, stored.evidenceImages[0].storedName));
+    expect(onDisk.equals(PHOTO)).toBe(false);
   });
 
-  test("rejects claims from the owner and from unverified users", async () => {
-    const owner = await createUser();
-    const unverified = await createUser({ isEmailVerified: false });
-    const listing = await createListing(owner, { type: "found" });
-
-    const ownerClaim = await request(app)
-      .post(`/api/v1/listings/${listing._id}/claims`)
-      .set(authHeader(owner))
-      .send({
-        explanation: "This is my own listing.",
-        privateDetails: ["One", "Two"],
-      });
-
-    expect(ownerClaim.statusCode).toBe(403);
-
-    const unverifiedClaim = await request(app)
-      .post(`/api/v1/listings/${listing._id}/claims`)
-      .set(authHeader(unverified))
-      .send({
-        explanation: "I think this is mine.",
-        privateDetails: ["One", "Two"],
-      });
-
-    expect(unverifiedClaim.statusCode).toBe(403);
-  });
-
-  test("requires at least two private identifying details", async () => {
-    const owner = await createUser();
-    const claimant = await createUser();
-    const listing = await createListing(owner, { type: "found" });
-
-    const response = await request(app)
-      .post(`/api/v1/listings/${listing._id}/claims`)
-      .set(authHeader(claimant))
-      .send({
-        explanation: "This is mine.",
-        privateDetails: ["Only one detail"],
-      });
+  test("UT-CLM-03: a blank description is rejected", async () => {
+    const setup = await createMatchedPair();
+    const response = await submitClaim(setup.claimant, setup.match, { text: "   " });
 
     expect(response.statusCode).toBe(400);
-    expect(response.body.message).toBe(
-      "At least two private identifying details are required."
-    );
+    expect(response.body.message).toBe("Evidence description is required.");
+  });
+
+  test("a description over 1000 characters is rejected", async () => {
+    const setup = await createMatchedPair();
+    const response = await submitClaim(setup.claimant, setup.match, { text: "x".repeat(1001) });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  test("UT-CLM-04: an oversized photo is rejected and no claim is created", async () => {
+    const setup = await createMatchedPair();
+    const response = await submitClaim(setup.claimant, setup.match, {
+      photos: [Buffer.alloc(5 * 1024 * 1024 + 1)],
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body.message).toBe("Each evidence photo must be no more than 5 MB.");
+    expect(await Claim.countDocuments({})).toBe(0);
+  });
+
+  test("UT-CLM-13: a claim with three photos is rejected", async () => {
+    const setup = await createMatchedPair();
+    const response = await submitClaim(setup.claimant, setup.match, {
+      photos: [PHOTO, PHOTO, PHOTO],
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body.message).toBe("A claim can include at most 2 evidence photos.");
+  });
+
+  test("UT-AUTH-01: an unverified user cannot submit a claim", async () => {
+    const setup = await createMatchedPair();
+    const unverified = await createUser({ isEmailVerified: false });
+    const response = await submitClaim(unverified, setup.match);
+
+    expect(response.statusCode).toBe(403);
+    expect(await Claim.countDocuments({})).toBe(0);
+  });
+
+  test("only the owner of the lost listing can claim the match", async () => {
+    const setup = await createMatchedPair();
+    const response = await submitClaim(setup.finder, setup.match);
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  test("a second active claim by the same claimant is refused", async () => {
+    const setup = await createMatchedPair();
+    await submittedClaim(setup);
+    const response = await submitClaim(setup.claimant, setup.match);
+
+    expect(response.statusCode).toBe(409);
+    expect(response.body.message).toBe("You already have an active claim for this match.");
+  });
+
+  test("a claim for a match that no longer exists is refused", async () => {
+    const setup = await createMatchedPair();
+    await Listing.updateOne({ _id: setup.found._id }, { $set: { isDeleted: true } });
+    const response = await submitClaim(setup.claimant, setup.match);
+
+    expect(response.statusCode).toBe(409);
+    expect(response.body.message).toBe("This match is no longer available for claiming.");
+  });
+
+  test("submitting requires a signed-in user", async () => {
+    const setup = await createMatchedPair();
+    const response = await request(app)
+      .post(`/api/v1/matches/${setup.match._id}/claims`)
+      .field("explanation", EXPLANATION);
+
+    expect(response.statusCode).toBe(401);
+  });
+});
+
+describe("Owner review (FR-CLM-02)", () => {
+  test("UT-CLM-05: the owner sees the claim and its evidence in the review list", async () => {
+    const setup = await createMatchedPair();
+    await submittedClaim(setup);
+
+    const response = await request(app)
+      .get(`/api/v1/listings/${setup.found._id}/claims`)
+      .set(authHeader(setup.finder));
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.claims).toHaveLength(1);
+    expect(response.body.claims[0].explanation).toBe(EXPLANATION);
+    expect(response.body.claims[0].claimant.firstName).toBe("Test");
+  });
+
+  test("the review list is refused to anyone who is not the owner", async () => {
+    const setup = await createMatchedPair();
+    await submittedClaim(setup);
+    const stranger = await createUser();
+
+    const response = await request(app)
+      .get(`/api/v1/listings/${setup.found._id}/claims`)
+      .set(authHeader(stranger));
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  test("the claim detail shows the owner's private details side by side with the evidence", async () => {
+    const setup = await createMatchedPair();
+    const claim = await submittedClaim(setup);
+
+    const response = await request(app)
+      .get(`/api/v1/claims/${claim.id}`)
+      .set(authHeader(setup.finder));
+
+    expect(response.body.claim.listing.privateDetails).toBe("Engraved initials on the case lid");
+    expect(response.body.claim.explanation).toBe(EXPLANATION);
+  });
+
+  test("the claimant does not receive the owner's private details", async () => {
+    const setup = await createMatchedPair();
+    const claim = await submittedClaim(setup);
+
+    const response = await request(app)
+      .get(`/api/v1/claims/${claim.id}`)
+      .set(authHeader(setup.claimant));
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.claim.listing.privateDetails).toBeUndefined();
+  });
+
+  test("UT-CLM-06: approving a claim resolves the listing, opens a thread, and notifies the claimant", async () => {
+    const setup = await createMatchedPair();
+    const claim = await submittedClaim(setup);
+
+    const response = await request(app)
+      .patch(`/api/v1/claims/${claim.id}/decision`)
+      .set(authHeader(setup.finder))
+      .send({ action: "approve" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.claim.status).toBe("approved");
+    expect(response.body.listingStatus).toBe("resolved");
+
+    const listing = await Listing.findById(setup.found._id);
+    expect(listing.status).toBe("resolved");
+
+    const systemMessages = await Message.countDocuments({ claim: claim.id, kind: "system" });
+    expect(systemMessages).toBe(1);
+
+    const notice = await Notification.findOne({ user: setup.claimant._id, type: "claim_decision" });
+    expect(notice.actionPath).toBe(`/messages/${claim.id}`);
+  });
+
+  test("UT-CLM-07: rejecting a claim keeps the listing active for other claimants", async () => {
+    const setup = await createMatchedPair();
+    const claim = await submittedClaim(setup);
+
+    const response = await request(app)
+      .patch(`/api/v1/claims/${claim.id}/decision`)
+      .set(authHeader(setup.finder))
+      .send({ action: "reject", decisionNote: "Initials do not match" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.claim.status).toBe("rejected");
+    expect((await Listing.findById(setup.found._id)).status).toBe("active");
+  });
+
+  test("UT-CLM-08 and UT-CLM-14: a non-owner cannot approve, and the claim is unchanged", async () => {
+    const setup = await createMatchedPair();
+    const claim = await submittedClaim(setup);
+    const stranger = await createUser();
+
+    const response = await request(app)
+      .patch(`/api/v1/claims/${claim.id}/decision`)
+      .set(authHeader(stranger))
+      .send({ action: "approve" });
+
+    expect(response.statusCode).toBe(403);
+    expect((await Claim.findById(claim.id)).status).toBe("pending");
+  });
+
+  test("UT-CLM-17: a claim cannot be approved twice", async () => {
+    const setup = await createMatchedPair();
+    const claim = await submittedClaim(setup);
+    const decide = () =>
+      request(app)
+        .patch(`/api/v1/claims/${claim.id}/decision`)
+        .set(authHeader(setup.finder))
+        .send({ action: "approve" });
+
+    expect((await decide()).statusCode).toBe(200);
+    expect((await decide()).statusCode).toBe(409);
+  });
+
+  test("a rejected claim can be reconsidered and approved by the owner", async () => {
+    const setup = await createMatchedPair();
+    const claim = await submittedClaim(setup);
+    await request(app)
+      .patch(`/api/v1/claims/${claim.id}/decision`)
+      .set(authHeader(setup.finder))
+      .send({ action: "reject" });
+
+    const response = await request(app)
+      .patch(`/api/v1/claims/${claim.id}/decision`)
+      .set(authHeader(setup.finder))
+      .send({ action: "approve" });
+
+    expect(response.statusCode).toBe(200);
+  });
+
+  test("approving one claim closes competing pending claims and notifies their claimants", async () => {
+    const setup = await createMatchedPair();
+    const claim = await submittedClaim(setup);
+
+    const secondClaimant = await createUser();
+    const secondLost = await createListing(secondClaimant, {
+      type: "lost",
+      title: "AirPods case",
+      description: "Lost AirPods case near the library",
+    });
+    const secondMatch = await createMatch(secondLost, setup.found);
+    const competing = await submitClaim(secondClaimant, secondMatch);
+    expect(competing.statusCode).toBe(201);
+
+    await request(app)
+      .patch(`/api/v1/claims/${claim.id}/decision`)
+      .set(authHeader(setup.finder))
+      .send({ action: "approve" });
+
+    expect((await Claim.findById(competing.body.claim.id)).status).toBe("closed");
+    const closedNotice = await Notification.findOne({ user: secondClaimant._id, type: "claim_closed" });
+    expect(closedNotice).not.toBeNull();
+  });
+
+  test("UT-CLM-16 and INT-20: if the thread cannot be opened, the approval is reverted and not reported", async () => {
+    const setup = await createMatchedPair();
+    const claim = await submittedClaim(setup);
+    const spy = jest.spyOn(Message, "create").mockRejectedValueOnce(new Error("database unavailable"));
+
+    const response = await request(app)
+      .patch(`/api/v1/claims/${claim.id}/decision`)
+      .set(authHeader(setup.finder))
+      .send({ action: "approve" });
+
+    spy.mockRestore();
+
+    expect(response.statusCode).toBe(500);
+    expect((await Claim.findById(claim.id)).status).toBe("pending");
+    expect((await Listing.findById(setup.found._id)).status).toBe("active");
+    expect(await Message.countDocuments({ claim: claim.id })).toBe(0);
+  });
+
+  test("a rejected claimant cannot resubmit for the same match", async () => {
+    const setup = await createMatchedPair();
+    const claim = await submittedClaim(setup);
+    await request(app)
+      .patch(`/api/v1/claims/${claim.id}/decision`)
+      .set(authHeader(setup.finder))
+      .send({ action: "reject" });
+
+    const response = await submitClaim(setup.claimant, setup.match);
+
+    expect(response.statusCode).toBe(409);
+    expect(response.body.message).toBe("This match is no longer available for claiming.");
+  });
+});
+
+describe("Evidence privacy (NFR-PRIV-01)", () => {
+  test("UT-CLM-09 and UT-PRIV-03: an uninvolved user cannot read a claim", async () => {
+    const setup = await createMatchedPair();
+    const claim = await submittedClaim(setup);
+    const stranger = await createUser();
+
+    const response = await request(app).get(`/api/v1/claims/${claim.id}`).set(authHeader(stranger));
+
+    expect(response.statusCode).toBe(403);
+    expect(response.text).not.toContain("initials");
+  });
+
+  test("UT-CLM-10: public listing responses never include claim evidence", async () => {
+    const setup = await createMatchedPair();
+    await submittedClaim(setup);
+
+    const response = await request(app).get(`/api/v1/listings/${setup.found._id}`);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.text).not.toContain("initials on the case");
+    expect(response.text).not.toContain("explanation");
+    expect(response.body.listing.privateDetails).toBeUndefined();
+  });
+
+  test("UT-CLM-15: the claimant and the owner read back the exact evidence, and evidence photos are served only to them", async () => {
+    const setup = await createMatchedPair();
+    const response = await submitClaim(setup.claimant, setup.match, { photos: [PHOTO] });
+    const claimId = response.body.claim.id;
+
+    const claimantRead = await request(app)
+      .get(`/api/v1/claims/${claimId}`)
+      .set(authHeader(setup.claimant));
+    expect(claimantRead.body.claim.explanation).toBe(EXPLANATION);
+
+    const photo = await request(app)
+      .get(`/api/v1/claims/${claimId}/evidence/0`)
+      .set(authHeader(setup.finder));
+    expect(photo.statusCode).toBe(200);
+    expect(Buffer.from(photo.body).equals(PHOTO)).toBe(true);
+    expect(photo.headers["cache-control"]).toContain("no-store");
+
+    const stranger = await createUser();
+    const denied = await request(app)
+      .get(`/api/v1/claims/${claimId}/evidence/0`)
+      .set(authHeader(stranger));
+    expect(denied.statusCode).toBe(403);
+
+    const anonymous = await request(app).get(`/api/v1/claims/${claimId}/evidence/0`);
+    expect(anonymous.statusCode).toBe(401);
+  });
+
+  test("the claimant's own claim list does not reveal the owner's private details", async () => {
+    const setup = await createMatchedPair();
+    await submittedClaim(setup);
+
+    const response = await request(app).get("/api/v1/claims/mine").set(authHeader(setup.claimant));
+
+    expect(response.statusCode).toBe(200);
+    expect(response.text).not.toContain("Engraved initials");
   });
 });
