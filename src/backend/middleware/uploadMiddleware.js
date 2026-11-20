@@ -1,6 +1,7 @@
-// Handles listing image uploads per FR LIST 02 and IF SW 02: up to three
-// JPEG, PNG, or WebP images, no more than 5 MB each, using multipart form
-// data, validated before a permanent file reference is stored.
+// Image uploads per FR LIST 02 / FR CLM 01 and IF SW 02: JPEG, PNG, or WebP,
+// no more than 5 MB each. Listing photos (up to 3) are written to the public
+// uploads folder. Claim evidence photos (up to 2) stay in memory so they can be
+// encrypted before anything reaches disk.
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
@@ -12,7 +13,8 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
-const MAX_FILES = 3;
+const MAX_LISTING_FILES = 3;
+const MAX_EVIDENCE_FILES = 2;
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -38,44 +40,86 @@ const uploadListingImages = multer({
   fileFilter,
   limits: {
     fileSize: MAX_FILE_SIZE_BYTES,
-    files: MAX_FILES,
+    files: MAX_LISTING_FILES,
   },
-}).array("images", MAX_FILES);
+}).array("images", MAX_LISTING_FILES);
 
-// Wraps multer so its errors (wrong type, too large, too many files) come back
-// as a normal 400 JSON response instead of an uncaught exception.
-function handleListingImageUpload(req, res, next) {
-  uploadListingImages(req, res, (error) => {
-    if (error instanceof multer.MulterError) {
-      let message = "Unable to upload the provided images.";
+const uploadEvidenceImages = multer({
+  storage: multer.memoryStorage(),
+  fileFilter,
+  limits: {
+    fileSize: MAX_FILE_SIZE_BYTES,
+    files: MAX_EVIDENCE_FILES,
+  },
+}).array("evidence", MAX_EVIDENCE_FILES);
 
-      if (error.code === "LIMIT_FILE_SIZE") {
-        message = "Each image must be no more than 5 MB.";
-      } else if (error.code === "LIMIT_FILE_COUNT" || error.code === "LIMIT_UNEXPECTED_FILE") {
-        message = "A listing can include at most 3 images.";
-      }
-
-      return res.status(400).json({ message });
+// Wraps multer so its errors come back as a normal 400 JSON response instead
+// of an uncaught exception.
+function multerErrorMessage(error, messages) {
+  if (error instanceof multer.MulterError) {
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return messages.size;
     }
 
+    if (error.code === "LIMIT_FILE_COUNT" || error.code === "LIMIT_UNEXPECTED_FILE") {
+      return messages.count;
+    }
+
+    return messages.generic;
+  }
+
+  return error.message;
+}
+
+function handleListingImageUpload(req, res, next) {
+  uploadListingImages(req, res, (error) => {
     if (error) {
-      return res.status(400).json({ message: error.message });
+      return res.status(400).json({
+        message: multerErrorMessage(error, {
+          size: "Each image must be no more than 5 MB.",
+          count: "A listing can include at most 3 images.",
+          generic: "Unable to upload the provided images.",
+        }),
+      });
     }
 
     next();
   });
 }
 
-// Converts uploaded files into the public URLs stored on the listing.
+// IF-UI-04 / FR-CLM-01: up to 2 evidence photos, same types and size limit.
+function handleEvidenceUpload(req, res, next) {
+  uploadEvidenceImages(req, res, (error) => {
+    if (error) {
+      return res.status(400).json({
+        message: multerErrorMessage(error, {
+          size: "Each evidence photo must be no more than 5 MB.",
+          count: "A claim can include at most 2 evidence photos.",
+          generic: "Unable to upload the evidence photos.",
+        }),
+      });
+    }
+
+    next();
+  });
+}
+
+// Converts uploaded listing files into the public URLs stored on the listing.
 function filesToImageUrls(req) {
-  if (!req.files || req.files.length === 0) {
+  if (!req.files || req.files.length === 0 || !Array.isArray(req.files)) {
     return [];
   }
 
-  return req.files.map((file) => `/uploads/listings/${file.filename}`);
+  return req.files
+    .filter((file) => file.filename)
+    .map((file) => `/uploads/listings/${file.filename}`);
 }
 
 module.exports = {
-  handleListingImageUpload,
+  ALLOWED_MIME_TYPES,
+  MAX_EVIDENCE_FILES,
+  MAX_FILE_SIZE_BYTES,
   filesToImageUrls,
+  handleEvidenceUpload,
+  handleListingImageUpload,
 };

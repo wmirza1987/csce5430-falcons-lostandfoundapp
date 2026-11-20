@@ -1,7 +1,31 @@
 const mongoose = require("mongoose");
 
+// Claim evidence is encrypted at rest (FR-CLM-01 / NFR-PRIV-01). The text
+// description is stored as an AES-256-GCM payload and the photos are stored
+// encrypted on disk outside the public uploads folder. Both are excluded from
+// queries unless a caller explicitly selects them.
+const evidenceImageSchema = new mongoose.Schema(
+  {
+    storedName: { type: String, required: true },
+    mimeType: { type: String, required: true },
+    sizeBytes: { type: Number, required: true, min: 1 },
+    iv: { type: String, required: true },
+    authTag: { type: String, required: true },
+  },
+  { _id: false }
+);
+
 const claimSchema = new mongoose.Schema(
   {
+    // The matched pair this claim is scoped to (FR-CLM-01).
+    match: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Match",
+      required: true,
+      index: true,
+    },
+
+    // The Found listing being claimed. Its owner reviews the claim (FR-CLM-02).
     listing: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Listing",
@@ -9,6 +33,7 @@ const claimSchema = new mongoose.Schema(
       index: true,
     },
 
+    // The Lost listing owner who submitted the claim.
     claimant: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -16,33 +41,21 @@ const claimSchema = new mongoose.Schema(
       index: true,
     },
 
-    explanation: {
+    // "iv:authTag:ciphertext", base64 encoded. Never returned directly.
+    explanationCiphertext: {
       type: String,
       required: true,
-      trim: true,
-      maxlength: 1000,
+      select: false,
     },
 
-    // At least two private identifying details are required by FR-CLM-01.
-    // These are never returned by public listing or match endpoints.
-    privateDetails: {
-      type: [
-        {
-          type: String,
-          trim: true,
-          maxlength: 200,
-        },
-      ],
-      validate: {
-        validator: function (details) {
-          return (
-            Array.isArray(details) &&
-            details.filter((detail) => String(detail || "").trim()).length >= 2
-          );
-        },
-        message: "At least two private identifying details are required.",
-      },
+    evidenceImages: {
+      type: [evidenceImageSchema],
+      default: [],
       select: false,
+      validate: {
+        validator: (images) => images.length <= 2,
+        message: "A claim can include at most 2 evidence photos.",
+      },
     },
 
     status: {
@@ -74,7 +87,6 @@ const claimSchema = new mongoose.Schema(
 );
 
 claimSchema.index({ listing: 1, status: 1, createdAt: 1 });
-claimSchema.index({ claimant: 1, createdAt: -1 });
-claimSchema.index({ listing: 1, claimant: 1, status: 1 });
+claimSchema.index({ match: 1, claimant: 1, status: 1 });
 
 module.exports = mongoose.model("Claim", claimSchema);
