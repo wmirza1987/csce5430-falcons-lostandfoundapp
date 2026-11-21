@@ -64,6 +64,36 @@ const messageSchema = new mongoose.Schema(
       maxlength: 300,
       select: false,
     },
+
+    // FR-ADM-01: hidden messages are omitted from normal thread views. A
+    // moderator reviewing the linked report can still see a content-free
+    // placeholder through the includeHidden query option.
+    isHidden: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    hiddenBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      select: false,
+    },
+
+    hiddenAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+
+    hiddenReason: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: "",
+      select: false,
+    },
   },
   {
     timestamps: true,

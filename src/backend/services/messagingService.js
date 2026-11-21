@@ -1,10 +1,15 @@
 // In-app messaging for approved claims (FR-CLM-03, FR-COM-01 to 03).
 // A thread is the set of Message documents for one claim. Only the claimant and
-// the Found listing owner can read or write it. Moderators can read and flag.
+// the Found listing owner can read or write it. FR-COM-02: a moderator may read
+// a thread only while reviewing an open/reviewing report linked to that thread,
+// and every such access is audit logged.
 const Claim = require("../models/Claim");
 const Listing = require("../models/Listing");
 const Message = require("../models/Message");
+const Report = require("../models/Report");
+const { ACTIONS, recordAudit } = require("./auditService");
 const { notifyModerationReview, notifyNewMessage } = require("./notificationService");
+const { assertThreadAccess, canModerate: isModerator } = require("./reportService");
 
 const PAGE_SIZE = 50;
 const MAX_BODY_LENGTH = 1000;
@@ -15,6 +20,7 @@ const PHONE_TEST = /(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/;
 
 const THREAD_OPEN_TEXT =
   "Messaging is open for this claim. Use this thread to arrange the handoff.";
+const HIDDEN_PLACEHOLDER = "[hidden by moderation]";
 
 class MessagingError extends Error {
   constructor(status, message) {
@@ -23,11 +29,8 @@ class MessagingError extends Error {
   }
 }
 
-function isModerator(user) {
-  return ["moderator", "admin"].includes(user.role);
-}
-
 // Returns "owner" (Found listing owner), "claimant", "moderator", or null.
+// This is the static role only: moderator thread access is checked separately.
 function roleFor(claim, listing, user) {
   if (claim.claimant.toString() === user._id.toString()) {
     return "claimant";
@@ -42,6 +45,20 @@ function roleFor(claim, listing, user) {
   }
 
   return null;
+}
+
+// Resolves a role for thread access. When `requireReport` is true, a moderator
+// is only admitted while an open/reviewing report exists for the thread; that
+// check also records the review + audit events (FR-COM-02).
+async function resolvedRole(claim, listing, user, { requireReport = false } = {}) {
+  const role = roleFor(claim, listing, user);
+
+  if (role !== "moderator" || !requireReport) {
+    return role;
+  }
+
+  const access = await assertThreadAccess({ claim, listing, user });
+  return access.allowed ? "moderator" : null;
 }
 
 function labelFor(role) {
@@ -82,7 +99,7 @@ async function createThread(claim, listing) {
   });
 }
 
-function toMessageView(message, claim, userId) {
+function toMessageView(message, claim, userId, { hidden = false } = {}) {
   const senderRole =
     message.kind === "system"
       ? "System"
@@ -90,14 +107,19 @@ function toMessageView(message, claim, userId) {
         ? "Claimant"
         : "Finder";
 
+  // A hidden message is never rendered with its real body to a moderator
+  // either; only a content-free placeholder is shown (NFR-PRIV-01).
+  const body = hidden ? HIDDEN_PLACEHOLDER : message.body;
+
   return {
     id: message._id,
-    body: message.body,
+    body,
     kind: message.kind,
     senderRole,
     isOwn: Boolean(message.sender) && message.sender.toString() === userId.toString(),
-    containsContactDetails: message.containsContactDetails,
-    flagged: message.flagged,
+    containsContactDetails: hidden ? false : message.containsContactDetails,
+    flagged: hidden || message.flagged,
+    isHidden: hidden,
     createdAt: message.createdAt,
   };
 }
@@ -156,15 +178,23 @@ async function postMessage(claimId, user, rawBody) {
 // Newest page first; messages inside a page are returned oldest to newest.
 async function getThreadMessages(claimId, user, page = 1) {
   const { claim, listing } = await loadClaimThread(claimId);
-  const role = roleFor(claim, listing, user);
+  const role = await resolvedRole(claim, listing, user, { requireReport: true });
 
   if (!role) {
     throw new MessagingError(403, "You do not have access to this conversation.");
   }
 
   const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
-  const total = await Message.countDocuments({ claim: claim._id });
-  const messages = await Message.find({ claim: claim._id })
+
+  // Participants never see hidden messages. A moderator reviewing a report
+  // sees a content-free placeholder only.
+  const query = { claim: claim._id };
+  if (role !== "moderator") {
+    query.isHidden = { $ne: true };
+  }
+
+  const total = await Message.countDocuments(query);
+  const messages = await Message.find(query)
     .sort({ createdAt: -1 })
     .skip((pageNumber - 1) * PAGE_SIZE)
     .limit(PAGE_SIZE);
@@ -180,16 +210,32 @@ async function getThreadMessages(claimId, user, page = 1) {
     pageSize: PAGE_SIZE,
     total,
     totalPages: Math.ceil(total / PAGE_SIZE),
-    messages: messages.reverse().map((message) => toMessageView(message, claim, user._id)),
+    messages: messages
+      .reverse()
+      .map((message) =>
+        toMessageView(message, claim, user._id, {
+          hidden: role === "moderator" && Boolean(message.isHidden),
+        })
+      ),
   };
 }
 
-// Threads visible to the user: approved claims they are part of, or every
-// approved thread for moderators (UT-AUTH-07, UT-MSG-08).
+// Threads visible to the user: approved claims they are part of. Moderators
+// only see threads with an open/reviewing report they can review (FR-COM-02).
 async function listThreads(user) {
   let claimQuery = { status: "approved" };
 
-  if (!isModerator(user)) {
+  if (isModerator(user)) {
+    const reportClaims = await Report.find({
+      status: { $in: ["open", "reviewing"] },
+      claim: { $ne: null },
+    })
+      .select("claim")
+      .lean();
+    const claimIds = reportClaims.map((report) => report.claim);
+
+    claimQuery = { status: "approved", _id: { $in: claimIds } };
+  } else {
     const ownedListingIds = (await Listing.find({ createdBy: user._id }).select("_id")).map(
       (listing) => listing._id
     );
@@ -224,7 +270,8 @@ async function listThreads(user) {
 }
 
 // FR-COM-02 moderation: flags a message and notifies both participants with a
-// generic notice. The reason is stored for moderators only.
+// generic notice. The reason is stored for moderators only. Access is limited
+// to a thread the moderator is currently reviewing via a report.
 async function flagMessage(messageId, moderator, reason) {
   const message = await Message.findById(messageId);
 
@@ -233,12 +280,25 @@ async function flagMessage(messageId, moderator, reason) {
   }
 
   const { claim, listing } = await loadClaimThread(message.claim);
+  const role = await resolvedRole(claim, listing, moderator, { requireReport: true });
+
+  if (role !== "moderator") {
+    throw new MessagingError(403, "You do not have access to this conversation.");
+  }
 
   message.flagged = true;
   message.flaggedBy = moderator._id;
   message.flaggedAt = new Date();
   message.flagReason = String(reason || "").trim().slice(0, 300);
   await message.save();
+
+  await recordAudit({
+    actor: moderator._id,
+    action: ACTIONS.REPORT_REVIEW_STARTED,
+    targetType: "message",
+    targetId: message._id,
+    detail: `flag message ${message._id}`,
+  });
 
   await notifyModerationReview(claim, listing, [claim.claimant, listing.createdBy]).catch(
     (error) => {
@@ -251,6 +311,7 @@ async function flagMessage(messageId, moderator, reason) {
 
 module.exports = {
   CONTACT_WARNING,
+  HIDDEN_PLACEHOLDER,
   MessagingError,
   PAGE_SIZE,
   containsContactDetails,
@@ -260,5 +321,6 @@ module.exports = {
   isModerator,
   listThreads,
   postMessage,
+  resolvedRole,
   roleFor,
 };

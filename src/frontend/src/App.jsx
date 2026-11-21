@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "./App.css";
 import Navbar from "./components/Navbar";
 import ProtectedRoute from "./components/ProtectedRoute";
+import RoleRoute from "./components/RoleRoute";
 
 import Home from "./pages/Home";
 import Login from "./pages/Login";
@@ -18,6 +19,9 @@ import ClaimForm from "./pages/ClaimForm";
 import ClaimReview from "./pages/ClaimReview";
 import Messaging from "./pages/Messaging";
 import MessageThreads from "./pages/MessageThreads";
+import CampusMap from "./pages/CampusMap";
+import Moderation from "./pages/Moderation";
+import AdminDashboard from "./pages/AdminDashboard";
 
 function App() {
   return (
@@ -33,6 +37,7 @@ function App() {
           <Route path="/reset-password/:token" element={<ResetPassword />} />
           <Route path="/verify-email/:token" element={<VerifyEmail />} />
           <Route path="/listings" element={<Listings />} />
+          <Route path="/map" element={<CampusMap />} />
 
           <Route path="/listings/:id" element={<ListingDetail />} />
 
@@ -96,6 +101,24 @@ function App() {
               <ProtectedRoute>
                 <Messaging />
               </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/moderation"
+            element={
+              <RoleRoute allow={["moderator", "admin"]}>
+                <Moderation />
+              </RoleRoute>
+            }
+          />
+
+          <Route
+            path="/admin"
+            element={
+              <RoleRoute allow={["admin"]}>
+                <AdminDashboard />
+              </RoleRoute>
             }
           />
         </Routes>

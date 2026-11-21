@@ -100,6 +100,36 @@ function ListingDetail() {
     }
   };
 
+  // FR-ADM-01: a signed-in user can report a listing for moderator review.
+  const handleReportListing = async () => {
+    const reason = window.prompt(
+      "Why should this listing be reviewed? (at least 10 characters, private to moderators)"
+    );
+
+    if (!reason || reason.trim().length < 10) {
+      setMessage("Please enter at least 10 characters.");
+      return;
+    }
+
+    try {
+      const response = await fetch(apiUrl("/api/v1/reports"), {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ targetType: "listing", targetId: id, reason: reason.trim() }),
+      });
+      const data = await readJson(response);
+
+      if (!response.ok) {
+        setMessage(data.message || "Unable to submit this report.");
+        return;
+      }
+
+      setMessage("Report submitted. A moderator will review it.");
+    } catch (error) {
+      setMessage("Unable to connect to the backend.");
+    }
+  };
+
   if (!listing) {
     return (
       <div>
@@ -192,6 +222,14 @@ function ListingDetail() {
           </button>{" "}
           <button type="button" onClick={handleDelete} disabled={busy}>
             Delete
+          </button>
+        </div>
+      )}
+
+      {token && !isOwner && (
+        <div className="action-row">
+          <button type="button" onClick={handleReportListing}>
+            Report listing
           </button>
         </div>
       )}

@@ -134,16 +134,37 @@ describe("Access control (FR-COM-02, FR-AUTH-03)", () => {
     expect(forFinder.body.threads.map((thread) => thread.claimId)).toContain(claimId);
   });
 
-  test("UT-MSG-09 and UT-AUTH-07: a moderator can read every conversation", async () => {
+  test("UT-MSG-09: a moderator cannot read a conversation without a linked report", async () => {
     const { claimId } = await approvedThread();
     const moderator = await createUser({ role: "moderator" });
 
     const response = await readThread(moderator, claimId);
     const threads = await request(app).get("/api/v1/messages/threads").set(authHeader(moderator));
 
+    expect(response.statusCode).toBe(403);
+    expect(threads.body.threads).toHaveLength(0);
+  });
+
+  test("FR-COM-02: a moderator can read only a thread linked to a report under review", async () => {
+    const { claimId, found, claimant } = await approvedThread();
+    const moderator = await createUser({ role: "moderator" });
+
+    const report = await request(app)
+      .post("/api/v1/reports")
+      .set(authHeader(claimant))
+      .send({
+        targetType: "listing",
+        targetId: String(found._id),
+        reason: "Please review this listing for misleading details.",
+      });
+    expect(report.statusCode).toBe(201);
+
+    const response = await readThread(moderator, claimId);
+    const threads = await request(app).get("/api/v1/messages/threads").set(authHeader(moderator));
+
     expect(response.statusCode).toBe(200);
     expect(response.body.thread.yourRole).toBe("Moderator");
-    expect(threads.body.threads.map((thread) => thread.claimId)).toContain(claimId);
+    expect(threads.body.threads.map((thread) => String(thread.claimId))).toContain(String(claimId));
   });
 
   test("a moderator cannot post into a conversation they do not take part in", async () => {
@@ -250,6 +271,17 @@ describe("Moderation (FR-COM-02)", () => {
     const sent = await sendMessage(claimant, claimId, "Problematic content here");
     const moderator = await createUser({ role: "moderator" });
 
+    // FR-COM-02: a report must exist before a moderator can access the thread.
+    const report = await request(app)
+      .post("/api/v1/reports")
+      .set(authHeader(claimant))
+      .send({
+        targetType: "message",
+        targetId: String(sent.body.message.id),
+        reason: "This message needs moderation review.",
+      });
+    expect(report.statusCode).toBe(201);
+
     const response = await request(app)
       .patch(`/api/v1/messages/${sent.body.message.id}/flag`)
       .set(authHeader(moderator))
@@ -259,7 +291,8 @@ describe("Moderation (FR-COM-02)", () => {
     expect(response.body.flagged.flagged).toBe(true);
 
     const notices = await Notification.find({ type: "moderation" }).lean();
-    const recipients = notices.map((notice) => String(notice.user)).sort();
+    const reviewed = notices.filter((notice) => notice.message.includes("was reviewed by moderation"));
+    const recipients = reviewed.map((notice) => String(notice.user)).sort();
     expect(recipients).toEqual([String(claimant._id), String(finder._id)].sort());
     for (const notice of notices) {
       expect(notice.message).not.toContain("SENSITIVE-REASON-TEXT");

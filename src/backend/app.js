@@ -8,6 +8,9 @@ const matchRoutes = require("./routes/matchRoutes");
 const claimRoutes = require("./routes/claimRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const messageRoutes = require("./routes/messageRoutes");
+const reportRoutes = require("./routes/reportRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const mapRoutes = require("./routes/mapRoutes");
 
 const app = express();
 
@@ -42,6 +45,9 @@ apiRouter.use(matchRoutes);
 apiRouter.use(claimRoutes);
 apiRouter.use(messageRoutes);
 apiRouter.use(notificationRoutes);
+apiRouter.use(reportRoutes);
+apiRouter.use(adminRoutes);
+apiRouter.use(mapRoutes);
 
 // Versioned API (IF-SW-01); the unversioned mount is kept as a compatibility
 // alias for existing clients and tests.

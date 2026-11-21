@@ -4,6 +4,11 @@ import { apiUrl } from "../config/api";
 import { authHeaders, formatDateTime, readJson, readStoredUser } from "../config/http";
 
 const MAX_MESSAGE = 1000;
+const MIN_REASON_LENGTH = 10;
+
+// IF-COM-03: REST polling runs no more than once every 15 seconds. Manual
+// refresh is available, and it honors the same guard.
+const POLL_INTERVAL_MS = 15000;
 
 // IF-UI-06 / FR-COM-01 / FR-COM-02: a one-to-one thread for one approved claim.
 // Participants are shown by role ("Finder", "Claimant"), never by email or ID.
@@ -21,9 +26,21 @@ function Messaging() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const listRef = useRef(null);
+  const lastFetchRef = useRef(0);
 
   const loadMessages = useCallback(
-    async (pageNumber = 1) => {
+    async (pageNumber = 1, { force = false } = {}) => {
+      // The guard applies to polling and manual refresh. Immediate refreshes
+      // after a user action pass force = true.
+      const now = Date.now();
+
+      if (!force && now - lastFetchRef.current < POLL_INTERVAL_MS) {
+        setNotice("Updated just now. Please wait a few seconds before refreshing again.");
+        return;
+      }
+
+      lastFetchRef.current = now;
+
       try {
         const response = await fetch(apiUrl(`/api/v1/claims/${claimId}/messages?page=${pageNumber}`), {
           headers: authHeaders(),
@@ -48,8 +65,17 @@ function Messaging() {
   );
 
   useEffect(() => {
-    loadMessages(1);
+    loadMessages(1, { force: true });
   }, [loadMessages]);
+
+  // IF-COM-03: no socket connection; poll at most once every 15 seconds.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      loadMessages(page);
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(timer);
+  }, [loadMessages, page]);
 
   useEffect(() => {
     if (listRef.current) {
@@ -95,7 +121,7 @@ function Messaging() {
         setNotice(data.warning);
       }
 
-      await loadMessages(1);
+      await loadMessages(1, { force: true });
     } catch (err) {
       setError("Message not sent. Your text is still here; check your connection and try again.");
     } finally {
@@ -124,7 +150,40 @@ function Messaging() {
       }
 
       setNotice("Message flagged for review.");
-      await loadMessages(page);
+      await loadMessages(page, { force: true });
+    } catch (err) {
+      setError("Unable to connect to the backend.");
+    }
+  };
+
+  // FR-ADM-01: any signed-in participant can report a message. The reason is
+  // kept private and at least 10 characters are required by the API.
+  const handleReport = async (messageId) => {
+    const reason = window.prompt(
+      `Why should this message be reviewed? (at least ${MIN_REASON_LENGTH} characters, private to moderators)`
+    );
+
+    if (!reason || reason.trim().length < MIN_REASON_LENGTH) {
+      setError(`Please enter at least ${MIN_REASON_LENGTH} characters.`);
+      return;
+    }
+
+    setError("");
+
+    try {
+      const response = await fetch(apiUrl("/api/v1/reports"), {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ targetType: "message", targetId: messageId, reason: reason.trim() }),
+      });
+      const data = await readJson(response);
+
+      if (!response.ok) {
+        setError(data.message || "Unable to submit this report.");
+        return;
+      }
+
+      setNotice("Report submitted. A moderator will review it.");
     } catch (err) {
       setError("Unable to connect to the backend.");
     }
@@ -158,6 +217,13 @@ function Messaging() {
         You are the <strong>{thread.yourRole}</strong>. Contact details are not shown here; arrange the handoff inside the app.
       </p>
 
+      <div className="action-row">
+        <button type="button" onClick={() => loadMessages(page)}>
+          Refresh messages
+        </button>
+        <span className="hint">Updates check automatically every 15 seconds.</span>
+      </div>
+
       <div role="status" aria-live="polite" className="sr-only">
         {notice}
       </div>
@@ -170,10 +236,10 @@ function Messaging() {
 
       {totalPages > 1 && (
         <nav aria-label="Message pages" className="pagination">
-          <button type="button" onClick={() => loadMessages(page + 1)} disabled={page >= totalPages}>
+          <button type="button" onClick={() => loadMessages(page + 1, { force: true })} disabled={page >= totalPages}>
             Older messages
           </button>{" "}
-          <button type="button" onClick={() => loadMessages(page - 1)} disabled={page <= 1}>
+          <button type="button" onClick={() => loadMessages(page - 1, { force: true })} disabled={page <= 1}>
             Newer messages
           </button>
         </nav>
@@ -190,16 +256,24 @@ function Messaging() {
               <strong>{message.isOwn ? "You" : message.senderRole}</strong>{" "}
               <span className="hint">{formatDateTime(message.createdAt)}</span>
               {message.flagged && <span className="status-badge status-rejected"> Flagged</span>}
+              {message.isHidden && <span className="status-badge status-closed"> Hidden</span>}
             </p>
             <p className="message-body">{message.body}</p>
             {message.containsContactDetails && (
               <p className="hint">This message included contact details.</p>
             )}
-            {isModerator && message.kind === "user" && !message.flagged && (
-              <button type="button" onClick={() => handleFlag(message.id)}>
-                Flag for review
-              </button>
-            )}
+            <div className="action-row">
+              {isModerator && message.kind === "user" && !message.flagged && (
+                <button type="button" onClick={() => handleFlag(message.id)}>
+                  Flag for review
+                </button>
+              )}
+              {!isModerator && message.kind === "user" && (
+                <button type="button" onClick={() => handleReport(message.id)}>
+                  Report message
+                </button>
+              )}
+            </div>
           </li>
         ))}
       </ol>
@@ -226,7 +300,7 @@ function Messaging() {
           </button>
         </form>
       ) : (
-        <p className="hint">Moderators can read this conversation but cannot post in it.</p>
+        <p className="hint">Moderators can read a reported conversation but cannot post in it.</p>
       )}
     </div>
   );

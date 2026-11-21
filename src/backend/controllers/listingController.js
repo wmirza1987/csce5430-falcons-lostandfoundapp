@@ -128,6 +128,7 @@ const getListings = async (req, res) => {
 
     const query = {
       isDeleted: false,
+      isHidden: { $ne: true },
       status: "active",
     };
 
@@ -228,14 +229,16 @@ const getListingById = async (req, res) => {
       .select("+privateDetails")
       .populate("createdBy", "firstName lastName");
 
-    if (!listing || listing.isDeleted) {
+    const isOwner =
+      req.user && listing.createdBy?._id.toString() === req.user._id.toString();
+
+    // FR-ADM-01: hidden listings leave public views. The owner may still see
+    // their own listing; everyone else gets a not-found response.
+    if (!listing || listing.isDeleted || (listing.isHidden && !isOwner)) {
       return res.status(404).json({
         message: "Listing not found.",
       });
     }
-
-    const isOwner =
-      req.user && listing.createdBy?._id.toString() === req.user._id.toString();
 
     const responseListing = listing.toObject();
 
