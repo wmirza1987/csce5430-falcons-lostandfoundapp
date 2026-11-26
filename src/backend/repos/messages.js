@@ -96,7 +96,7 @@ async function findById(id, options = {}) {
 
 async function findFirstForClaim(claimId) {
   const rows = await query(
-    `SELECT TOP (1) ${selectList({})} FROM dbo.Messages m WHERE m.claim = @claim ORDER BY m.createdAt`,
+    `SELECT TOP (1) ${selectList({})} FROM dbo.Messages m WHERE m.claim = @claim ORDER BY m.createdAt, m.seq`,
     { claim: idOf(claimId) }
   );
   return mapMessage(rows[0]);
@@ -118,7 +118,7 @@ async function listPageForClaim(claimId, { includeHidden, skip, take }) {
   const rows = await query(
     `SELECT ${selectList({})} FROM dbo.Messages m
      WHERE m.claim = @claim ${includeHidden ? "" : "AND m.isHidden = 0"}
-     ORDER BY m.createdAt DESC, m.id
+     ORDER BY m.createdAt DESC, m.seq DESC
      OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY`,
     { claim: idOf(claimId), skip, take }
   );
