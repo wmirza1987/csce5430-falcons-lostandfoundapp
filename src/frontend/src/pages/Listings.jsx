@@ -3,6 +3,45 @@ import { Link, useNavigate } from "react-router-dom";
 import { apiUrl, API_BASE_URL } from "../config/api";
 import { formatDate } from "../config/http";
 
+// Mirrors the seeded categories and campus buildings (backend/scripts/seed.js).
+// GET /api/v1/categories does not exist (only the admin endpoint), so fixed lists are used.
+const CATEGORY_OPTIONS = [
+  "Electronics",
+  "Wallets and ID",
+  "Keys",
+  "Bags",
+  "Clothing",
+  "Books",
+  "Water Bottles",
+  "Jewelry",
+  "Other",
+];
+const BUILDING_OPTIONS = [
+  "Willis Library",
+  "University Union",
+  "Discovery Park",
+  "Business Leadership Building",
+  "Gateway Center",
+];
+const ZONE_OPTIONS = ["Main Quad", "Discovery Park", "West Campus", "Gateway"];
+
+// Builds the page list with "..." gaps, for example 1 ... 4 5 6 ... 12.
+function buildPageItems(current, total) {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const pages = new Set([1, total, current - 1, current, current + 1]);
+  if (current <= 3) [2, 3, 4].forEach((n) => pages.add(n));
+  if (current >= total - 2) [total - 3, total - 2, total - 1].forEach((n) => pages.add(n));
+  const sorted = [...pages].filter((n) => n >= 1 && n <= total).sort((a, b) => a - b);
+  const items = [];
+  sorted.forEach((n, i) => {
+    if (i > 0 && n - sorted[i - 1] > 1) items.push("gap");
+    items.push(n);
+  });
+  return items;
+}
+
 function Listings() {
   const navigate = useNavigate();
 
@@ -185,13 +224,18 @@ function Listings() {
 
           <div className="form-field">
             <label htmlFor="search-category">Category</label>
-            <input
+            <select
               id="search-category"
-              type="text"
               value={category}
               onChange={(event) => setCategory(event.target.value)}
-              placeholder="Example: Bags"
-            />
+            >
+              <option value="">All categories</option>
+              {CATEGORY_OPTIONS.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="form-field">
@@ -218,24 +262,34 @@ function Listings() {
 
           <div className="form-field">
             <label htmlFor="search-building">Building</label>
-            <input
+            <select
               id="search-building"
-              type="text"
               value={building}
               onChange={(event) => setBuilding(event.target.value)}
-              placeholder="Example: Willis Library"
-            />
+            >
+              <option value="">All buildings</option>
+              {BUILDING_OPTIONS.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="form-field">
             <label htmlFor="search-zone">Zone</label>
-            <input
+            <select
               id="search-zone"
-              type="text"
               value={zone}
               onChange={(event) => setZone(event.target.value)}
-              placeholder="Example: North Campus"
-            />
+            >
+              <option value="">All zones</option>
+              {ZONE_OPTIONS.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="form-field">
@@ -344,27 +398,48 @@ function Listings() {
           })}
         </div>
 
-        <nav className="pagination" aria-label="Pagination">
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
-          >
-            Previous
-          </button>
+        {totalPages > 1 && (
+          <nav className="pagination" aria-label="Pagination">
+            <button
+              type="button"
+              className="page-btn"
+              aria-label="Previous page"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+            >
+              Previous
+            </button>
 
-          <span className="page-status">
-            Page {page} of {totalPages}
-          </span>
+            {buildPageItems(page, totalPages).map((item, index) =>
+              item === "gap" ? (
+                <span key={`gap-${index}`} className="page-gap" aria-hidden="true">
+                  ...
+                </span>
+              ) : (
+                <button
+                  key={item}
+                  type="button"
+                  className={`page-btn${item === page ? " page-btn-active" : ""}`}
+                  aria-label={`Page ${item}`}
+                  aria-current={item === page ? "page" : undefined}
+                  onClick={() => setPage(item)}
+                >
+                  {item}
+                </button>
+              )
+            )}
 
-          <button
-            type="button"
-            disabled={page >= totalPages}
-            onClick={() => setPage(page + 1)}
-          >
-            Next
-          </button>
-        </nav>
+            <button
+              type="button"
+              className="page-btn"
+              aria-label="Next page"
+              disabled={page >= totalPages}
+              onClick={() => setPage(page + 1)}
+            >
+              Next
+            </button>
+          </nav>
+        )}
       </section>
     </div>
   );

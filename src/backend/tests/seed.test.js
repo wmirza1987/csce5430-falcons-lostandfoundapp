@@ -56,6 +56,9 @@ describe("demo seed", () => {
     expect(listings).toHaveLength(LISTINGS.length);
     expect(new Set(listings.map((l) => `${l.createdBy}|${l.type}|${l.title}`)).size).toBe(LISTINGS.length);
 
+    const withPhotos = await query("SELECT COUNT(*) AS n FROM dbo.Listings WHERE imagesJson <> '[]'");
+    expect(withPhotos[0].n).toBe(LISTINGS.length);
+
     const matches = await query("SELECT score FROM dbo.Matches WHERE score >= @t", { t: getMatchThreshold() });
     expect(matches.length).toBeGreaterThanOrEqual(3);
 

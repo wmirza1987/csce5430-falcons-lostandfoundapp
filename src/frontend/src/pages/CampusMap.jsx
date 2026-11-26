@@ -103,10 +103,25 @@ function CampusMap() {
       scrollWheelZoom: false,
     });
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    const osmLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map);
+
+    // Prefer Azure Maps tiles (proxied by the API, no key in the browser) when the
+    // server has them configured; otherwise OpenStreetMap stays in place.
+    fetch(apiUrl("/api/v1/map/config"))
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data && data.provider === "azure-maps" && mapRef.current === map) {
+          map.removeLayer(osmLayer);
+          L.tileLayer(apiUrl("/api/v1/map/tiles/{z}/{x}/{y}.png"), {
+            maxZoom: 19,
+            attribution: "&copy; Microsoft Azure Maps",
+          }).addTo(map);
+        }
+      })
+      .catch(() => {});
 
     mapRef.current = map;
     markersRef.current = L.layerGroup().addTo(map);

@@ -20,6 +20,8 @@ const categoriesRepo = require("../repos/categories");
 const listingsRepo = require("../repos/listings");
 const notificationsRepo = require("../repos/notifications");
 const usersRepo = require("../repos/users");
+const storage = require("../services/storage");
+const { createPlaceholderPng } = require("../services/placeholderImage");
 const { getMatchThreshold, refreshMatchesForListing } = require("../services/matchingService");
 
 const ACCOUNTS = [
@@ -181,7 +183,7 @@ async function ensureListing(spec, ownerId) {
       location,
       privateDetails: spec.privateDetails,
     });
-    return { listing, created: false };
+    return { listing: await ensurePhoto(listing, spec), created: false };
   }
 
   // Direct repo insert bypasses the "Found listings need a photo" API rule.
@@ -199,7 +201,19 @@ async function ensureListing(spec, ownerId) {
     createdBy: ownerId,
     status: "active",
   });
-  return { listing, created: true };
+  return { listing: await ensurePhoto(listing, spec), created: true };
+}
+
+// Demo photos are generated placeholder tiles stored through the normal storage
+// service (Blob in Azure, local disk otherwise), so the image route serves them.
+async function ensurePhoto(listing, spec) {
+  if (listing.images && listing.images.length > 0) {
+    return listing;
+  }
+
+  const name = `${crypto.randomUUID()}.png`;
+  await storage.put("listings", name, createPlaceholderPng(spec.category || spec.title), "image/png");
+  return listingsRepo.update(listing._id, { images: [name] });
 }
 
 // Safety net so the Notifications page is never empty if matching made none.
