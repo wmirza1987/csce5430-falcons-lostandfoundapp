@@ -45,15 +45,6 @@ Lost and Found for Campus centers on a simple core workflow: a user posts a lost
 
 The live deployment is described in `docs/azure-resources.md`.
 
----|---|
-| Frontend | React (ES6+) |
-| Backend | Node.js + Express |
-| Database | MongoDB (local Docker for development; Atlas free tier for deployment) |
-| Notifications | Azure Communication Services Email |
-| Hosting | Render / Vercel (free tier) |
-
-Every external dependency above is free-tier or no-cost by design, to keep the project easy to implement and inexpensive to run for the semester.
-
 ---
 
 ## Repository Structure
@@ -121,7 +112,7 @@ Messaging refreshes no more than once every 15 seconds in the client, with a man
 ### Prerequisites
 
 - Node.js (LTS version) and npm or pnpm
-- MongoDB 7+ (local Docker container or an Atlas connection string)
+- A SQL Server for local development (for example SQL Server Express) or an Azure SQL Database
 - Optional: an Azure Communication Services Email resource (`ACS_ENDPOINT`, `EMAIL_FROM`) for verification, reset, and notification email; without it, email is skipped
 
 ### Installation
