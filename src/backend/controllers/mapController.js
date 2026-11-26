@@ -5,6 +5,7 @@
 const listingsRepo = require("../repos/listings");
 const { findBuilding, listBuildings, listZones } = require("../services/campusService");
 const { queryString } = require("../services/validation");
+const azureMaps = require("../services/azureMaps");
 
 
 async function buildings(req, res) {
@@ -94,3 +95,31 @@ async function pins(req, res) {
 }
 
 module.exports = { buildings, pins };
+
+// Tells the client which basemap to use; no secrets are exposed.
+function config(req, res) {
+  return res.status(200).json({ provider: azureMaps.isConfigured() ? "azure-maps" : "osm" });
+}
+
+async function tile(req, res) {
+  if (!azureMaps.isConfigured()) {
+    return res.status(404).json({ message: "Azure Maps is not configured." });
+  }
+
+  try {
+    const result = await azureMaps.fetchTile(req.params.z, req.params.x, req.params.y);
+
+    if (result.status !== 200) {
+      return res.status(result.status).json({ message: "Unable to load map tile." });
+    }
+
+    res.set("Content-Type", result.contentType);
+    res.set("Cache-Control", "public, max-age=86400");
+    return res.status(200).send(result.buffer);
+  } catch (error) {
+    return res.status(502).json({ message: "Unable to load map tile." });
+  }
+}
+
+module.exports.config = config;
+module.exports.tile = tile;

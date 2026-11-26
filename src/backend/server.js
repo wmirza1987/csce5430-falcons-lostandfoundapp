@@ -1,5 +1,8 @@
 require("dotenv").config();
 
+// Telemetry first so instrumentation can patch http/express before they load.
+require("./services/telemetry").startTelemetry();
+
 const app = require("./app");
 const { query } = require("./db/pool");
 
