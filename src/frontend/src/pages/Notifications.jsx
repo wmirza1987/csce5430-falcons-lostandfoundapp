@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { apiUrl } from "../config/api";
 import { authHeaders, formatDateTime, readJson } from "../config/http";
 
@@ -11,6 +11,47 @@ function Notifications() {
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+
+  const deleteAccount = async (event) => {
+    event.preventDefault();
+    setDeleteError("");
+
+    if (!deletePassword) {
+      setDeleteError("Enter your password to delete your account.");
+      return;
+    }
+
+    if (!window.confirm("Delete your account? This cannot be undone.")) {
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      const response = await fetch(apiUrl("/api/v1/auth/account"), {
+        method: "DELETE",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ password: deletePassword }),
+      });
+      const data = await readJson(response);
+
+      if (!response.ok) {
+        setDeleteError(data.message || "Unable to delete account.");
+        return;
+      }
+
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      navigate("/");
+    } catch (error) {
+      setDeleteError("Unable to connect to the backend.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const loadNotifications = async () => {
     try {
@@ -124,6 +165,39 @@ function Notifications() {
         <input type="checkbox" checked={emailNotifications} onChange={toggleEmailNotifications} disabled={busy} />{" "}
         Also email me about matches, claims, messages, and resolutions
       </label>
+
+      <section aria-labelledby="delete-account-heading" className="card delete-account">
+        <h2 id="delete-account-heading">Delete my account</h2>
+        <form onSubmit={deleteAccount} noValidate className="stack-form">
+          <p id="delete-account-warning" className="hint">
+            Deleting your account disables your access immediately and removes your profile data.
+          </p>
+          <div className="form-field">
+            <label htmlFor="delete-account-password">Confirm your password</label>
+            <input
+              id="delete-account-password"
+              type="password"
+              autoComplete="current-password"
+              value={deletePassword}
+              onChange={(event) => setDeletePassword(event.target.value)}
+              aria-describedby={`delete-account-warning${deleteError ? " delete-account-error" : ""}`}
+              aria-invalid={Boolean(deleteError)}
+            />
+          </div>
+          <div role="alert">
+            {deleteError && (
+              <p id="delete-account-error" className="field-error">
+                {deleteError}
+              </p>
+            )}
+          </div>
+          <div className="action-row">
+            <button type="submit" className="danger" disabled={busy}>
+              Delete account
+            </button>
+          </div>
+        </form>
+      </section>
 
       {unreadCount > 0 && (
         <p>

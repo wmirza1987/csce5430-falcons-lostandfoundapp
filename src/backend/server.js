@@ -22,6 +22,9 @@ const startServer = async () => {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
+
+  // NFR-PRIV-02: delete resolved content after 90 days and old audit records after a year.
+  require("./services/retentionService").startRetentionJob();
 };
 
 startServer();
