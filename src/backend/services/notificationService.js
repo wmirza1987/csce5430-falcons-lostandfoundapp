@@ -37,7 +37,7 @@ async function sendAndRecordEmail(notification, { to, subject, body }) {
 
     if (result.delivered) {
       status = "sent";
-    } else if (result.reason === "smtp_not_configured") {
+    } else if (result.reason === "email_not_configured") {
       status = "skipped";
     } else {
       status = "failed";
