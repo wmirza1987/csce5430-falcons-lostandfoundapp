@@ -31,20 +31,22 @@ function VerifyEmail() {
   }, [token]);
 
   return (
-    <div>
+    <div className="auth-wrap">
+      <div className="card auth-card">
       <h1>Email Verification</h1>
 
       {status === "verifying" && <p role="status">Verifying your email...</p>}
 
       {status !== "verifying" && (
-        <p role="status" className={status === "error" ? "field-error" : undefined}>
+        <p role="status" className={status === "error" ? "field-error" : "flash flash-success"}>
           {message}
         </p>
       )}
 
-      <p>
+      <p className="auth-alt">
         <Link to="/login">Go to login</Link>
       </p>
+      </div>
     </div>
   );
 }
