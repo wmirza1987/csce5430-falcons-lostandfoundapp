@@ -877,6 +877,28 @@ button.outline {
   margin: 24px 0 8px;
 }
 
+.pagination {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.page-btn {
+  min-width: 40px;
+}
+
+.page-btn-active,
+.page-btn-active:hover:not(:disabled) {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+  font-weight: 700;
+}
+
+.page-gap {
+  color: var(--muted);
+  padding: 0 4px;
+}
+
 .page-status {
   color: var(--muted);
   font-size: 0.95rem;
