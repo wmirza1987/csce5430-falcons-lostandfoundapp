@@ -200,3 +200,8 @@ CREATE TABLE dbo.Categories (
   updatedAt DATETIME2 NOT NULL CONSTRAINT DF_Cat_u DEFAULT SYSUTCDATETIME(),
   CONSTRAINT UQ_Categories_name UNIQUE (name)
 );
+
+-- Strict message order: createdAt ties (messages sent in the same instant) are
+-- broken by this identity value instead of the random GUID id.
+IF COL_LENGTH('dbo.Messages', 'seq') IS NULL
+  ALTER TABLE dbo.Messages ADD seq BIGINT IDENTITY(1,1) NOT NULL;

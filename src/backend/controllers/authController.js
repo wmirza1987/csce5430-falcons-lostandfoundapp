@@ -1,4 +1,5 @@
 const bcrypt = require("bcrypt");
+const { AccountError, deleteAccount } = require("../services/accountService");
 const jwt = require("jsonwebtoken");
 const users = require("../repos/users");
 const { isUniqueViolation } = require("../repos/util");
@@ -305,8 +306,28 @@ const updatePreferences = async (req, res) => {
   }
 };
 
+// NFR-PRIV-02: the signed-in user deletes their own account after confirming
+// their password. Access ends immediately and the profile is de-identified.
+const deleteAccountHandler = async (req, res) => {
+  try {
+    await deleteAccount(req.user, (req.body || {}).password);
+
+    return res.status(200).json({
+      message: "Your account has been deleted and your profile data removed.",
+    });
+  } catch (error) {
+    if (error instanceof AccountError) {
+      return res.status(error.status).json({ message: error.message });
+    }
+
+    console.error(`Unable to delete account: ${error.message}`);
+    return res.status(500).json({ message: "Unable to delete the account." });
+  }
+};
+
 module.exports = {
   registerUser,
+  deleteAccountHandler,
   updatePreferences,
   verifyEmail,
   loginUser,

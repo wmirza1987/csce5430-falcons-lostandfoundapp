@@ -6,6 +6,7 @@ const {
   forgotPassword,
   resetPassword,
   updatePreferences,
+  deleteAccountHandler,
 } = require("../controllers/authController");
 const { protect } = require("../middleware/authMiddleware");
 const { authorizeRoles } = require("../middleware/roleMiddleware");
@@ -41,6 +42,7 @@ router.get("/profile", protect, (req, res) => {
 });
 
 router.patch("/preferences", protect, updatePreferences);
+router.delete("/account", protect, authLimiter, deleteAccountHandler);
 
 // Demonstrates FR AUTH 03 role enforcement. Full moderator/admin capabilities
 // are out of Phase 1 scope (Deliverable 2, Section 9.3); this confirms the

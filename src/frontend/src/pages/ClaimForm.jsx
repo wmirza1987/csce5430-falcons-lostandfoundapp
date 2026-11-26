@@ -252,18 +252,36 @@ function ClaimForm() {
           </div>
 
           <div className="action-row">
-            <button type="submit" className="primary">Review claim</button>
+            <button type="submit" className="primary">Preview claim</button>
           </div>
         </form>
       )}
 
       {previewing && (
         <section aria-labelledby="preview-heading" className="card">
-          <h2 id="preview-heading">Review before submitting</h2>
+          <h2 id="preview-heading">Preview claim (read only)</h2>
+          <p>
+            <strong>Matched item</strong>
+          </p>
+          <p>
+            {listing.title} · {listing.category} · {listing.location?.building} · {formatDate(listing.date)}
+          </p>
           <p>
             <strong>Evidence description</strong>
           </p>
           <p className="preview-text">{description.trim()}</p>
+          <p>
+            <strong>Evidence photo files</strong>
+          </p>
+          {photos.length === 0 ? (
+            <p className="hint">No photos selected.</p>
+          ) : (
+            <ul>
+              {photos.map((file) => (
+                <li key={`${file.name}-${file.size}`}>{file.name}</li>
+              ))}
+            </ul>
+          )}
 
           {photoPreviews.length > 0 && (
             <div className="listing-images">

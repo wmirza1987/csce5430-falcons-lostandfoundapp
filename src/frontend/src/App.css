@@ -1120,3 +1120,12 @@ button.outline {
     font-size: 1.9rem;
   }
 }
+
+.delete-account {
+  margin: 1rem 0;
+}
+
+.delete-account .danger {
+  border-color: var(--danger, #b00020);
+  color: var(--danger, #b00020);
+}
