@@ -5,7 +5,7 @@ const notificationsRepo = require("../repos/notifications");
 const {
   waitForPendingMatchJobs,
 } = require("../services/matchingService");
-const { authHeader, createListing, createMatchedPair, createUser } = require("./helpers");
+const { JPEG_BYTES, authHeader, createListing, createMatchedPair, createUser } = require("./helpers");
 
 describe("Match API (FR-MATCH-02, FR-MATCH-03)", () => {
   test("returns matches with a 0 to 1 confidence score to the listing owner", async () => {
@@ -90,7 +90,7 @@ describe("Match API (FR-MATCH-02, FR-MATCH-03)", () => {
       .field("date", "2026-10-01")
       .field("building", "Willis Library")
       .field("zone", "North Campus")
-      .attach("images", Buffer.from("img"), { filename: "a.jpg", contentType: "image/jpeg" });
+      .attach("images", JPEG_BYTES, { filename: "a.jpg", contentType: "image/jpeg" });
 
     expect(response.statusCode).toBe(201);
 

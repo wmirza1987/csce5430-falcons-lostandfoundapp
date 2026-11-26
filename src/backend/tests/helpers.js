@@ -4,6 +4,18 @@ const matchesRepo = require("../repos/matches");
 const usersRepo = require("../repos/users");
 const { calculateMatchDetails } = require("../services/matchingService");
 
+// Minimal buffers that start with the real magic bytes of each image type.
+const PNG_BYTES = Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  Buffer.from("fake-png-body"),
+]);
+const JPEG_BYTES = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from("fake-jpeg-body")]);
+const WEBP_BYTES = Buffer.concat([
+  Buffer.from("RIFF"),
+  Buffer.from([0x10, 0, 0, 0]),
+  Buffer.from("WEBPfake"),
+]);
+
 let sequence = 0;
 
 async function createUser(overrides = {}) {
@@ -48,7 +60,7 @@ async function createListing(owner, overrides = {}) {
       },
       images:
         overrides.images ||
-        (type === "found" ? ["/uploads/listings/test-found.jpg"] : []),
+        (type === "found" ? ["11111111-1111-4111-8111-111111111111.jpg"] : []),
       privateDetails: overrides.privateDetails,
       createdBy: owner._id,
       status: overrides.status || "active",
@@ -95,6 +107,9 @@ async function createMatchedPair({ finder, claimant } = {}) {
 }
 
 module.exports = {
+  JPEG_BYTES,
+  PNG_BYTES,
+  WEBP_BYTES,
   authHeader,
   createListing,
   createMatch,

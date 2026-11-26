@@ -1,5 +1,5 @@
 jest.mock("../services/emailService", () => ({
-  isSmtpConfigured: jest.fn(() => true),
+  isEmailConfigured: jest.fn(() => true),
   sendMail: jest.fn(),
   sendNotificationEmail: jest.fn(),
   sendVerificationEmail: jest.fn(),
@@ -75,7 +75,7 @@ describe("In-app and email notifications (FR-NOTIF-01)", () => {
   });
 
   test("UT-NOTIF-08: a failed send is recorded as failed, never as sent", async () => {
-    emailService.sendNotificationEmail.mockResolvedValueOnce({ delivered: false, reason: "smtp_error" });
+    emailService.sendNotificationEmail.mockResolvedValueOnce({ delivered: false, reason: "email_error" });
     const user = await createUser({ emailNotifications: true });
     const notice = await createNotification({ userId: user._id, type: "claim", message: "New claim" });
 
@@ -95,7 +95,7 @@ describe("In-app and email notifications (FR-NOTIF-01)", () => {
   });
 
   test("UT-NOTIF-09: failed emails are retried and marked sent once delivered", async () => {
-    emailService.sendNotificationEmail.mockResolvedValueOnce({ delivered: false, reason: "smtp_error" });
+    emailService.sendNotificationEmail.mockResolvedValueOnce({ delivered: false, reason: "email_error" });
     const user = await createUser({ emailNotifications: true });
     const notice = await createNotification({ userId: user._id, type: "claim", message: "New claim" });
 
@@ -105,8 +105,8 @@ describe("In-app and email notifications (FR-NOTIF-01)", () => {
     expect((await notificationsRepo.findById(notice._id)).emailStatus).toBe("sent");
   });
 
-  test("no SMTP configuration records the email as skipped", async () => {
-    emailService.sendNotificationEmail.mockResolvedValueOnce({ delivered: false, reason: "smtp_not_configured" });
+  test("no email configuration records the email as skipped", async () => {
+    emailService.sendNotificationEmail.mockResolvedValueOnce({ delivered: false, reason: "email_not_configured" });
     const user = await createUser({ emailNotifications: true });
     const notice = await createNotification({ userId: user._id, type: "claim", message: "New claim" });
 

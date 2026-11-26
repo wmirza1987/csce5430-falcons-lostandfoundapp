@@ -37,7 +37,7 @@ Lost and Found for Campus centers on a simple core workflow: a user posts a lost
 | Frontend | React (ES6+) |
 | Backend | Node.js + Express |
 | Database | MongoDB (local Docker for development; Atlas free tier for deployment) |
-| Notifications | Nodemailer |
+| Notifications | Azure Communication Services Email |
 | Maps | Leaflet + OpenStreetMap (no API key required) |
 | Hosting | Render / Vercel (free tier) |
 
@@ -111,7 +111,7 @@ Messaging refreshes no more than once every 15 seconds in the client, with a man
 
 - Node.js (LTS version) and npm or pnpm
 - MongoDB 7+ (local Docker container or an Atlas connection string)
-- Optional: an SMTP account (Mailtrap, Ethereal, or similar) for verification, reset, and notification email
+- Optional: an Azure Communication Services Email resource (`ACS_ENDPOINT`, `EMAIL_FROM`) for verification, reset, and notification email; without it, email is skipped
 
 ### Installation
 
@@ -142,11 +142,10 @@ Backend (`src/backend/.env`):
 | `JWT_SECRET` | Long random signing secret for authenticated sessions |
 | `APP_BASE_URL` | Public client URL used in verification/reset links |
 | `CLIENT_ORIGIN` | Comma-separated allowed browser origins for CORS |
-| `SMTP_HOST` | Email provider host (leave blank to skip delivery locally) |
-| `SMTP_PORT` | Email provider port |
-| `SMTP_USER` | Email provider account username |
-| `SMTP_PASS` | Email provider account password or API key |
-| `SMTP_FROM` | "From" address used on outgoing email |
+| `ACS_ENDPOINT` | Azure Communication Services endpoint (leave blank to skip email delivery locally) |
+| `EMAIL_FROM` | Verified sender address used on outgoing email |
+| `STORAGE_ACCOUNT_NAME` | Azure Storage account for photos and evidence (blank uses `.local-storage/` on disk) |
+| `STORAGE_CONTAINER_LISTINGS` / `STORAGE_CONTAINER_EVIDENCE` | Private blob containers (defaults `listing-photos`, `claim-evidence`) |
 | `EVIDENCE_ENCRYPTION_KEY` | Base64 or hex 32-byte key for AES-256-GCM encryption of claim evidence. If unset, a key is derived from `JWT_SECRET`; set it explicitly in production |
 | `MATCH_THRESHOLD` | Optional. Minimum match score (0 to 1) that creates a potential match. Default `0.6` |
 

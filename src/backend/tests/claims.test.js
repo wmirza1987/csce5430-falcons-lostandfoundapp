@@ -1,15 +1,14 @@
-const fs = require("fs");
-const path = require("path");
 const request = require("supertest");
 const app = require("../app");
 const claimsRepo = require("../repos/claims");
 const listingsRepo = require("../repos/listings");
 const messagesRepo = require("../repos/messages");
 const notificationsRepo = require("../repos/notifications");
-const { authHeader, createListing, createMatch, createMatchedPair, createUser } = require("./helpers");
+const { JPEG_BYTES, authHeader, createListing, createMatch, createMatchedPair, createUser } = require("./helpers");
 
-const EVIDENCE_DIR = path.join(__dirname, "..", "private", "evidence");
-const PHOTO = Buffer.from("not-really-a-jpeg-but-typed-as-one");
+const storage = require("../services/storage");
+
+const PHOTO = JPEG_BYTES;
 const EXPLANATION = "The case has my initials engraved and I lost it on Monday near the desk.";
 
 function submitClaim(claimant, match, { text = EXPLANATION, photos = [] } = {}) {
@@ -53,7 +52,7 @@ describe("Claim submission (FR-CLM-01)", () => {
     expect(stored.explanationCiphertext.split(":")).toHaveLength(3);
   });
 
-  test("UT-CLM-02: a claim with two evidence photos is accepted and the photos are encrypted on disk", async () => {
+  test("UT-CLM-02: a claim with two evidence photos is accepted and the photos are encrypted in storage", async () => {
     const setup = await createMatchedPair();
     const response = await submitClaim(setup.claimant, setup.match, {
       photos: [PHOTO, PHOTO],
@@ -63,8 +62,9 @@ describe("Claim submission (FR-CLM-01)", () => {
     expect(response.body.claim.evidence).toHaveLength(2);
 
     const stored = await claimsRepo.findById(response.body.claim.id, { includeEvidence: true });
-    const onDisk = fs.readFileSync(path.join(EVIDENCE_DIR, stored.evidenceImages[0].storedName));
-    expect(onDisk.equals(PHOTO)).toBe(false);
+    const blob = await storage.get("evidence", stored.evidenceImages[0].storedName);
+    expect(blob.buffer.equals(PHOTO)).toBe(false);
+    expect(blob.buffer.includes(Buffer.from("fake-jpeg-body"))).toBe(false);
   });
 
   test("UT-CLM-03: a blank description is rejected", async () => {
