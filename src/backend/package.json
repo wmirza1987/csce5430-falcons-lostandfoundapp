@@ -4,7 +4,8 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "jest",
+    "test": "jest --runInBand",
+    "migrate": "node db/migrate.js",
     "dev": "nodemon server.js",
     "start": "node server.js"
   },
@@ -25,7 +26,6 @@
     "dotenv": "^16.4.5",
     "express": "^5.0.1",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.9.2",
     "msnodesqlv8": "^6.2.2",
     "mssql": "^12.8.1",
     "multer": "^1.4.5-lts.1",

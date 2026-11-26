@@ -14,6 +14,10 @@ const mapRoutes = require("./routes/mapRoutes");
 
 const app = express();
 
+// App Service (and most hosts) sit behind a proxy; trust the first hop so
+// req.ip and the rate limiter see the real client address.
+app.set("trust proxy", 1);
+
 const allowedOrigins = (process.env.CLIENT_ORIGIN || "http://localhost:5173")
   .split(",")
   .map((origin) => origin.trim())

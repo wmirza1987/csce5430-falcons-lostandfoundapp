@@ -1,6 +1,6 @@
 // Azure SQL connection and query helpers. Every query goes through
 // query()/tx.query() with named parameters; SQL text is never built from
-// request input (fixes the NoSQL-style injection risk of the Mongoose layer).
+// request input (removes the NoSQL-style injection risk of the old data layer).
 // DB_AUTH=windows uses the msnodesqlv8 driver (Windows integrated auth) and is
 // for a local SQL Server only. Azure uses the default tedious driver.
 const sql = process.env.DB_AUTH === "windows" ? require("mssql/msnodesqlv8") : require("mssql");
