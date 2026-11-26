@@ -1,12 +1,11 @@
 // In-app messaging for approved claims (FR-CLM-03, FR-COM-01 to 03).
-// A thread is the set of Message documents for one claim. Only the claimant and
+// A thread is the set of Message rows for one claim. Only the claimant and
 // the Found listing owner can read or write it. FR-COM-02: a moderator may read
 // a thread only while reviewing an open/reviewing report linked to that thread,
 // and every such access is audit logged.
-const Claim = require("../models/Claim");
-const Listing = require("../models/Listing");
-const Message = require("../models/Message");
-const Report = require("../models/Report");
+const claimsRepo = require("../repos/claims");
+const listingsRepo = require("../repos/listings");
+const messagesRepo = require("../repos/messages");
 const { ACTIONS, recordAudit } = require("./auditService");
 const { notifyModerationReview, notifyNewMessage } = require("./notificationService");
 const { assertThreadAccess, canModerate: isModerator } = require("./reportService");
@@ -72,13 +71,13 @@ function containsContactDetails(text) {
 }
 
 async function loadClaimThread(claimId) {
-  const claim = await Claim.findById(claimId);
+  const claim = await claimsRepo.findById(claimId);
 
   if (!claim) {
     throw new MessagingError(404, "Conversation not found.");
   }
 
-  const listing = await Listing.findById(claim.listing);
+  const listing = await listingsRepo.findById(claim.listing);
 
   if (!listing) {
     throw new MessagingError(404, "Conversation not found.");
@@ -88,15 +87,19 @@ async function loadClaimThread(claimId) {
 }
 
 // Opens the thread for an approved claim by writing its opening system message.
-// Notifications are sent by the caller after this write is confirmed.
-async function createThread(claim, listing) {
-  return Message.create({
-    claim: claim._id,
-    listing: listing._id,
-    sender: null,
-    kind: "system",
-    body: THREAD_OPEN_TEXT,
-  });
+// Notifications are sent by the caller after this write is confirmed. Pass the
+// approval transaction so the opening message commits or rolls back with it.
+async function createThread(claim, listing, tx) {
+  return messagesRepo.create(
+    {
+      claim: claim._id,
+      listing: listing._id,
+      sender: null,
+      kind: "system",
+      body: THREAD_OPEN_TEXT,
+    },
+    tx
+  );
 }
 
 function toMessageView(message, claim, userId, { hidden = false } = {}) {
@@ -136,7 +139,7 @@ async function postMessage(claimId, user, rawBody) {
     throw new MessagingError(409, "Messages open only after a claim is approved.");
   }
 
-  const body = String(rawBody ?? "").trim();
+  const body = typeof rawBody === "string" ? rawBody.trim() : "";
 
   if (!body) {
     throw new MessagingError(400, "Message text is required.");
@@ -149,7 +152,7 @@ async function postMessage(claimId, user, rawBody) {
   const detected = containsContactDetails(body);
 
   // NFR-REL-01: the message is confirmed in the database before success is reported.
-  const message = await Message.create({
+  const message = await messagesRepo.create({
     claim: claim._id,
     listing: listing._id,
     sender: user._id,
@@ -184,20 +187,21 @@ async function getThreadMessages(claimId, user, page = 1) {
     throw new MessagingError(403, "You do not have access to this conversation.");
   }
 
-  const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+  const pageNumber = Math.min(
+    Math.max(parseInt(typeof page === "string" ? page : "1", 10) || 1, 1),
+    100000
+  );
 
   // Participants never see hidden messages. A moderator reviewing a report
   // sees a content-free placeholder only.
-  const query = { claim: claim._id };
-  if (role !== "moderator") {
-    query.isHidden = { $ne: true };
-  }
+  const includeHidden = role === "moderator";
 
-  const total = await Message.countDocuments(query);
-  const messages = await Message.find(query)
-    .sort({ createdAt: -1 })
-    .skip((pageNumber - 1) * PAGE_SIZE)
-    .limit(PAGE_SIZE);
+  const total = await messagesRepo.countForClaim(claim._id, { includeHidden });
+  const messages = await messagesRepo.listPageForClaim(claim._id, {
+    includeHidden,
+    skip: (pageNumber - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
+  });
 
   return {
     thread: {
@@ -223,34 +227,13 @@ async function getThreadMessages(claimId, user, page = 1) {
 // Threads visible to the user: approved claims they are part of. Moderators
 // only see threads with an open/reviewing report they can review (FR-COM-02).
 async function listThreads(user) {
-  let claimQuery = { status: "approved" };
-
-  if (isModerator(user)) {
-    const reportClaims = await Report.find({
-      status: { $in: ["open", "reviewing"] },
-      claim: { $ne: null },
-    })
-      .select("claim")
-      .lean();
-    const claimIds = reportClaims.map((report) => report.claim);
-
-    claimQuery = { status: "approved", _id: { $in: claimIds } };
-  } else {
-    const ownedListingIds = (await Listing.find({ createdBy: user._id }).select("_id")).map(
-      (listing) => listing._id
-    );
-
-    claimQuery = {
-      status: "approved",
-      $or: [{ claimant: user._id }, { listing: { $in: ownedListingIds } }],
-    };
-  }
-
-  const claims = await Claim.find(claimQuery).sort({ decidedAt: -1 }).limit(100);
+  const claims = isModerator(user)
+    ? await claimsRepo.listApprovedThreadsUnderReport({ limit: 100 })
+    : await claimsRepo.listApprovedThreadsForUser(user._id, { limit: 100 });
   const threads = [];
 
   for (const claim of claims) {
-    const listing = await Listing.findById(claim.listing).select("title createdBy");
+    const listing = await listingsRepo.findById(claim.listing);
 
     if (!listing) {
       continue;
@@ -273,7 +256,7 @@ async function listThreads(user) {
 // generic notice. The reason is stored for moderators only. Access is limited
 // to a thread the moderator is currently reviewing via a report.
 async function flagMessage(messageId, moderator, reason) {
-  const message = await Message.findById(messageId);
+  const message = await messagesRepo.findById(messageId);
 
   if (!message) {
     throw new MessagingError(404, "Message not found.");
@@ -286,11 +269,10 @@ async function flagMessage(messageId, moderator, reason) {
     throw new MessagingError(403, "You do not have access to this conversation.");
   }
 
-  message.flagged = true;
-  message.flaggedBy = moderator._id;
-  message.flaggedAt = new Date();
-  message.flagReason = String(reason || "").trim().slice(0, 300);
-  await message.save();
+  const flaggedMessage = await messagesRepo.setFlagged(message._id, {
+    flaggedBy: moderator._id,
+    reason: typeof reason === "string" ? reason : "",
+  });
 
   await recordAudit({
     actor: moderator._id,
@@ -306,7 +288,7 @@ async function flagMessage(messageId, moderator, reason) {
     }
   );
 
-  return toMessageView(message, claim, moderator._id);
+  return toMessageView(flaggedMessage, claim, moderator._id);
 }
 
 module.exports = {

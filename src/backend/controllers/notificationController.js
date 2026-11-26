@@ -37,7 +37,7 @@ async function markRead(req, res) {
 
     return res.status(200).json({ notification });
   } catch (error) {
-    if (error.name === "CastError") {
+    if (error.name === "InvalidIdError") {
       return res.status(400).json({ message: "Invalid notification id." });
     }
 
