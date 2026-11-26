@@ -1,8 +1,9 @@
 // Claim verification workflow (FR-CLM-01, FR-CLM-02, FR-CLM-03).
-const Claim = require("../models/Claim");
-const Listing = require("../models/Listing");
-const Match = require("../models/Match");
-const User = require("../models/User");
+const { withTransaction } = require("../db/pool");
+const claimsRepo = require("../repos/claims");
+const listingsRepo = require("../repos/listings");
+const matchesRepo = require("../repos/matches");
+const usersRepo = require("../repos/users");
 const { removeMatchesForListing } = require("../services/matchingService");
 const {
   decryptText,
@@ -20,16 +21,26 @@ const {
   notifyNewClaim,
   notifyThreadOpened,
 } = require("../services/notificationService");
+const { isGuid } = require("../services/validation");
 
 const MAX_EXPLANATION_LENGTH = 1000;
 const NO_LONGER_AVAILABLE = "This match is no longer available for claiming.";
+
+// Raised inside the approval transaction to roll it back and answer with a
+// specific status and message.
+class DecisionError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
 
 function logError(context, error) {
   console.error(`${context}: ${error.message}`);
 }
 
 function isSameUser(id, user) {
-  return Boolean(id) && id.toString() === user._id.toString();
+  return Boolean(id) && String(id) === String(user._id);
 }
 
 function publicListingView(listing) {
@@ -113,7 +124,8 @@ async function submitClaim(req, res) {
       });
     }
 
-    const explanation = String(req.body.explanation ?? "").trim();
+    const rawExplanation = (req.body || {}).explanation;
+    const explanation = typeof rawExplanation === "string" ? rawExplanation.trim() : "";
 
     if (!explanation) {
       return res.status(400).json({ message: "Evidence description is required." });
@@ -125,16 +137,17 @@ async function submitClaim(req, res) {
       });
     }
 
-    const match = await Match.findById(req.params.id)
-      .populate("lostListing")
-      .populate("foundListing");
-
-    if (!match || !match.lostListing || !match.foundListing) {
-      return res.status(409).json({ message: NO_LONGER_AVAILABLE });
+    if (!isGuid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid match id." });
     }
 
-    const lost = match.lostListing;
-    const found = match.foundListing;
+    const match = await matchesRepo.findById(req.params.id);
+    const lost = match ? await listingsRepo.findById(match.lostListing) : null;
+    const found = match ? await listingsRepo.findById(match.foundListing) : null;
+
+    if (!match || !lost || !found) {
+      return res.status(409).json({ message: NO_LONGER_AVAILABLE });
+    }
 
     if (!isSameUser(lost.createdBy, req.user)) {
       return res.status(403).json({
@@ -146,19 +159,15 @@ async function submitClaim(req, res) {
       return res.status(409).json({ message: NO_LONGER_AVAILABLE });
     }
 
-    const previous = await Claim.findOne({
-      match: match._id,
-      claimant: req.user._id,
-      status: { $in: ["pending", "approved", "rejected"] },
-    }).select("status");
+    const previous = await claimsRepo.findPriorStatuses(match._id, req.user._id);
 
-    if (previous && ["pending", "approved"].includes(previous.status)) {
+    if (previous.some((status) => ["pending", "approved"].includes(status))) {
       return res.status(409).json({
         message: "You already have an active claim for this match.",
       });
     }
 
-    if (previous && previous.status === "rejected") {
+    if (previous.includes("rejected")) {
       return res.status(409).json({ message: NO_LONGER_AVAILABLE });
     }
 
@@ -166,7 +175,7 @@ async function submitClaim(req, res) {
       savedImages.push(saveEncryptedFile(file.buffer, file.mimetype));
     }
 
-    const claim = await Claim.create({
+    const claim = await claimsRepo.create({
       match: match._id,
       listing: found._id,
       claimant: req.user._id,
@@ -181,19 +190,11 @@ async function submitClaim(req, res) {
     return res.status(201).json({
       message: "Claim submitted. The owner will review your evidence.",
       claim: claimView(
-        await Claim.findById(claim._id).select("+explanationCiphertext +evidenceImages")
+        await claimsRepo.findById(claim._id, { includeExplanation: true, includeEvidence: true })
       ),
     });
   } catch (error) {
     removeStoredEvidence(savedImages);
-
-    if (error.name === "CastError") {
-      return res.status(400).json({ message: "Invalid match id." });
-    }
-
-    if (error.name === "ValidationError") {
-      return res.status(400).json({ message: "Please check the submitted claim." });
-    }
 
     logError("Unable to submit claim", error);
     return res.status(500).json({ message: "Unable to submit claim." });
@@ -203,7 +204,11 @@ async function submitClaim(req, res) {
 // Owner-only review list for one Found listing.
 async function getListingClaims(req, res) {
   try {
-    const listing = await Listing.findById(req.params.id);
+    if (!isGuid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid listing id." });
+    }
+
+    const listing = await listingsRepo.findById(req.params.id);
 
     if (!listing || listing.isDeleted) {
       return res.status(404).json({ message: "Listing not found." });
@@ -213,21 +218,29 @@ async function getListingClaims(req, res) {
       return res.status(403).json({ message: "Only the listing owner can review claims." });
     }
 
-    const claims = await Claim.find({ listing: listing._id })
-      .select("+explanationCiphertext +evidenceImages")
-      .populate("claimant", "firstName lastName")
-      .sort({ createdAt: 1 });
-
-    return res.status(200).json({
-      claims: claims.map((claim) =>
-        claimView(claim, { listing, claimant: claim.claimant, includeOwnerDetails: true })
-      ),
+    const claims = await claimsRepo.findByListing(listing._id, {
+      includeExplanation: true,
+      includeEvidence: true,
     });
-  } catch (error) {
-    if (error.name === "CastError") {
-      return res.status(400).json({ message: "Invalid listing id." });
+    const claimants = new Map();
+    const views = [];
+
+    for (const claim of claims) {
+      if (!claimants.has(claim.claimant)) {
+        claimants.set(claim.claimant, await usersRepo.findById(claim.claimant));
+      }
+
+      views.push(
+        claimView(claim, {
+          listing,
+          claimant: claimants.get(claim.claimant),
+          includeOwnerDetails: true,
+        })
+      );
     }
 
+    return res.status(200).json({ claims: views });
+  } catch (error) {
     logError("Unable to retrieve claims", error);
     return res.status(500).json({ message: "Unable to retrieve claims." });
   }
@@ -236,14 +249,15 @@ async function getListingClaims(req, res) {
 // The claimant's own claims, shown without any owner-only details.
 async function getMyClaims(req, res) {
   try {
-    const claims = await Claim.find({ claimant: req.user._id })
-      .select("+explanationCiphertext +evidenceImages")
-      .sort({ createdAt: -1 });
+    const claims = await claimsRepo.findByClaimant(req.user._id, {
+      includeExplanation: true,
+      includeEvidence: true,
+    });
 
     const views = [];
 
     for (const claim of claims) {
-      const listing = await Listing.findById(claim.listing);
+      const listing = await listingsRepo.findById(claim.listing);
       views.push(claimView(claim, { listing }));
     }
 
@@ -256,13 +270,20 @@ async function getMyClaims(req, res) {
 
 async function getClaimById(req, res) {
   try {
-    const claim = await Claim.findById(req.params.id).select("+explanationCiphertext +evidenceImages");
+    if (!isGuid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid claim id." });
+    }
+
+    const claim = await claimsRepo.findById(req.params.id, {
+      includeExplanation: true,
+      includeEvidence: true,
+    });
 
     if (!claim) {
       return res.status(404).json({ message: "Claim not found." });
     }
 
-    const listing = await Listing.findById(claim.listing).select("+privateDetails");
+    const listing = await listingsRepo.findById(claim.listing, { includePrivate: true });
 
     if (!listing) {
       return res.status(404).json({ message: "Claim not found." });
@@ -277,18 +298,12 @@ async function getClaimById(req, res) {
       });
     }
 
-    const claimant = isOwner
-      ? await User.findById(claim.claimant).select("firstName lastName")
-      : null;
+    const claimant = isOwner ? await usersRepo.findById(claim.claimant) : null;
 
     return res.status(200).json({
       claim: claimView(claim, { listing, claimant, includeOwnerDetails: isOwner }),
     });
   } catch (error) {
-    if (error.name === "CastError") {
-      return res.status(400).json({ message: "Invalid claim id." });
-    }
-
     logError("Unable to retrieve claim", error);
     return res.status(500).json({ message: "Unable to retrieve claim." });
   }
@@ -297,13 +312,17 @@ async function getClaimById(req, res) {
 // Serves one encrypted evidence photo to the claimant or the listing owner only.
 async function getEvidenceImage(req, res) {
   try {
-    const claim = await Claim.findById(req.params.id).select("+evidenceImages");
+    if (!isGuid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid claim id." });
+    }
+
+    const claim = await claimsRepo.findById(req.params.id, { includeEvidence: true });
 
     if (!claim) {
       return res.status(404).json({ message: "Evidence not found." });
     }
 
-    const listing = await Listing.findById(claim.listing);
+    const listing = await listingsRepo.findById(claim.listing);
 
     if (!listing) {
       return res.status(404).json({ message: "Evidence not found." });
@@ -331,24 +350,31 @@ async function getEvidenceImage(req, res) {
 }
 
 // FR-CLM-02: the owner approves or rejects a claim. Approval resolves the listing
-// and opens a message thread (FR-CLM-03). Each step is confirmed before the next,
-// and earlier steps are reverted if a later one fails (NFR-REL-01, INT-20).
+// and opens a message thread (FR-CLM-03). All database steps of an approval run
+// in one SQL transaction (NFR-REL-01, INT-20): if any step fails or a
+// conditional update changes no row, everything is rolled back.
 async function decideClaim(req, res) {
   try {
-    const action = String(req.body.action || "").toLowerCase();
+    const body = req.body || {};
+    const action = typeof body.action === "string" ? body.action.toLowerCase() : "";
 
     if (!["approve", "reject"].includes(action)) {
       return res.status(400).json({ message: "Action must be either approve or reject." });
     }
 
-    const decisionNote = String(req.body.decisionNote || "").trim().slice(0, 500);
-    const claim = await Claim.findById(req.params.id);
+    if (!isGuid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid claim id." });
+    }
+
+    const decisionNote =
+      typeof body.decisionNote === "string" ? body.decisionNote.trim().slice(0, 500) : "";
+    const claim = await claimsRepo.findById(req.params.id);
 
     if (!claim) {
       return res.status(404).json({ message: "Claim not found." });
     }
 
-    const listing = await Listing.findById(claim.listing);
+    const listing = await listingsRepo.findById(claim.listing);
 
     if (!listing || listing.isDeleted) {
       return res.status(404).json({ message: "Listing not found." });
@@ -361,11 +387,7 @@ async function decideClaim(req, res) {
     const decision = { decidedBy: req.user._id, decidedAt: new Date(), decisionNote };
 
     if (action === "reject") {
-      const rejected = await Claim.findOneAndUpdate(
-        { _id: claim._id, status: "pending" },
-        { $set: { status: "rejected", ...decision } },
-        { new: true }
-      );
+      const rejected = await claimsRepo.reject(claim._id, decision);
 
       if (!rejected) {
         return res.status(409).json({ message: "Only a pending claim can be rejected." });
@@ -391,77 +413,60 @@ async function decideClaim(req, res) {
       });
     }
 
-    const resolved = await Listing.findOneAndUpdate(
-      { _id: listing._id, status: "active", isDeleted: false },
-      { $set: { status: "resolved" } },
-      { new: true }
-    );
-
-    if (!resolved) {
-      return res.status(409).json({ message: "This match is no longer available for claiming." });
-    }
-
-    const approved = await Claim.findOneAndUpdate(
-      { _id: claim._id, status: { $in: ["pending", "rejected"] } },
-      { $set: { status: "approved", ...decision } },
-      { new: true }
-    );
-
-    if (!approved) {
-      await Listing.updateOne({ _id: listing._id }, { $set: { status: "active" } });
-      return res.status(409).json({ message: "Only a pending or rejected claim can be approved." });
-    }
+    let outcome;
 
     try {
-      await createThread(approved, resolved);
-    } catch (error) {
-      logError("Unable to open message thread; reverting approval", error);
-      await Claim.updateOne(
-        { _id: claim._id },
-        {
-          $set: {
-            status: claim.status,
-            decidedBy: claim.decidedBy || null,
-            decidedAt: claim.decidedAt || null,
-            decisionNote: claim.decisionNote,
-          },
+      outcome = await withTransaction(async (tx) => {
+        // Only an active, undeleted listing can be resolved. This conditional
+        // update is what stops two concurrent approvals from both succeeding.
+        const resolved = await listingsRepo.markResolvedIfActive(listing._id, tx);
+
+        if (!resolved) {
+          throw new DecisionError(409, NO_LONGER_AVAILABLE);
         }
-      );
-      await Listing.updateOne({ _id: listing._id }, { $set: { status: "active" } });
+
+        const approved = await claimsRepo.approve(claim._id, decision, tx);
+
+        if (!approved) {
+          throw new DecisionError(409, "Only a pending or rejected claim can be approved.");
+        }
+
+        await createThread(approved, resolved, tx);
+
+        const closed = await claimsRepo.closeCompetingPending(
+          listing._id,
+          claim._id,
+          {
+            decidedBy: req.user._id,
+            decidedAt: new Date(),
+            decisionNote: "Another claim for this listing was approved.",
+          },
+          tx
+        );
+
+        await removeMatchesForListing(listing._id, tx);
+
+        return { resolved, approved, closed };
+      });
+    } catch (error) {
+      if (error instanceof DecisionError) {
+        return res.status(error.status).json({ message: error.message });
+      }
+
+      logError("Unable to approve claim; transaction rolled back", error);
       return res.status(500).json({
         message: "Unable to approve claim. Nothing was changed; please try again.",
       });
     }
 
-    const competingClaims = await Claim.find({
-      listing: listing._id,
-      status: "pending",
-      _id: { $ne: claim._id },
-    });
+    const { resolved, approved, closed } = outcome;
 
-    if (competingClaims.length > 0) {
-      await Claim.updateMany(
-        { _id: { $in: competingClaims.map((item) => item._id) } },
-        {
-          $set: {
-            status: "closed",
-            decidedBy: req.user._id,
-            decidedAt: new Date(),
-            decisionNote: "Another claim for this listing was approved.",
-          },
-        }
-      );
-
-      for (const competing of competingClaims) {
-        await notifyCompetingClaimClosed(competing, resolved).catch((error) => {
-          logError("Unable to notify competing claimant", error);
-        });
-      }
+    // Notifications run after the commit and can never undo or fail the approval.
+    for (const competing of closed) {
+      await notifyCompetingClaimClosed(competing, resolved).catch((error) => {
+        logError("Unable to notify competing claimant", error);
+      });
     }
-
-    await removeMatchesForListing(listing._id).catch((error) => {
-      logError("Unable to remove matches after approval", error);
-    });
 
     await notifyClaimDecision(approved, resolved, true).catch((error) => {
       logError("Unable to notify claimant of approval", error);
@@ -479,10 +484,6 @@ async function decideClaim(req, res) {
       listingStatus: resolved.status,
     });
   } catch (error) {
-    if (error.name === "CastError") {
-      return res.status(400).json({ message: "Invalid claim id." });
-    }
-
     logError("Unable to decide claim", error);
     return res.status(500).json({ message: "Unable to decide claim." });
   }
