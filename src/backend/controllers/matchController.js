@@ -1,7 +1,8 @@
 // Match queries (FR-MATCH-02). Responses carry the confidence score and the
 // public listing details only. Scoring factors are never returned (FR-MATCH-03).
-const Listing = require("../models/Listing");
-const Match = require("../models/Match");
+const listingsRepo = require("../repos/listings");
+const matchesRepo = require("../repos/matches");
+const { isGuid } = require("../services/validation");
 
 function publicListingView(listing) {
   return {
@@ -20,8 +21,8 @@ function publicListingView(listing) {
 }
 
 function matchView(match, viewerId) {
-  const lostOwner = match.lostListing.createdBy.toString();
-  const foundOwner = match.foundListing.createdBy.toString();
+  const lostOwner = match.lostListing.createdBy;
+  const foundOwner = match.foundListing.createdBy;
   const viewer = viewerId.toString();
 
   let yourRole = null;
@@ -46,43 +47,46 @@ function matchView(match, viewerId) {
   };
 }
 
-const MATCH_POPULATE = [
-  { path: "lostListing" },
-  { path: "foundListing" },
-];
+// Replaces the listing ids on each match with the listing rows (a join
+// populate). A match whose listing no longer exists gets null for that side.
+async function attachListings(matches) {
+  const ids = matches.flatMap((match) => [match.lostListing, match.foundListing]);
+  const rows = await listingsRepo.findByIds(ids);
+  const byId = new Map(rows.map((row) => [row._id, row]));
 
-async function findMatchesQuery(listingIds) {
-  return Match.find({
-    $or: [{ lostListing: { $in: listingIds } }, { foundListing: { $in: listingIds } }],
-  })
-    .sort({ score: -1, createdAt: -1 })
-    .populate(MATCH_POPULATE);
+  return matches.map((match) => ({
+    ...match,
+    lostListing: byId.get(match.lostListing) || null,
+    foundListing: byId.get(match.foundListing) || null,
+  }));
 }
 
 async function getListingMatches(req, res) {
   try {
-    const listing = await Listing.findById(req.params.id);
+    if (!isGuid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid listing id." });
+    }
+
+    const listing = await listingsRepo.findById(req.params.id);
 
     if (!listing || listing.isDeleted) {
       return res.status(404).json({ message: "Listing not found." });
     }
 
-    if (listing.createdBy.toString() !== req.user._id.toString()) {
+    if (listing.createdBy !== req.user._id) {
       return res.status(403).json({
         message: "You can only view matches for your own listings.",
       });
     }
 
-    const matches = await findMatchesQuery([listing._id]);
+    const matches = (await attachListings(await matchesRepo.findByListing(listing._id))).filter(
+      (match) => match.lostListing && match.foundListing
+    );
 
     return res.status(200).json({
       matches: matches.map((match) => matchView(match, req.user._id)),
     });
   } catch (error) {
-    if (error.name === "CastError") {
-      return res.status(400).json({ message: "Invalid listing id." });
-    }
-
     console.error(`Unable to retrieve matches: ${error.message}`);
     return res.status(500).json({ message: "Unable to retrieve matches." });
   }
@@ -90,18 +94,9 @@ async function getListingMatches(req, res) {
 
 async function getMyMatches(req, res) {
   try {
-    const listings = await Listing.find({
-      createdBy: req.user._id,
-      isDeleted: false,
-    }).select("_id");
-
-    const listingIds = listings.map((listing) => listing._id);
-
-    if (listingIds.length === 0) {
-      return res.status(200).json({ matches: [] });
-    }
-
-    const matches = await findMatchesQuery(listingIds);
+    const matches = (await attachListings(await matchesRepo.findByOwner(req.user._id))).filter(
+      (match) => match.lostListing && match.foundListing
+    );
 
     return res.status(200).json({
       matches: matches.map((match) => matchView(match, req.user._id)),
@@ -115,7 +110,12 @@ async function getMyMatches(req, res) {
 // A single match, visible only to the owners of its two listings.
 async function getMatchById(req, res) {
   try {
-    const match = await Match.findById(req.params.id).populate(MATCH_POPULATE);
+    if (!isGuid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid match id." });
+    }
+
+    const found = await matchesRepo.findById(req.params.id);
+    const match = found ? (await attachListings([found]))[0] : null;
 
     if (!match || !match.lostListing || !match.foundListing) {
       return res.status(404).json({
@@ -123,10 +123,9 @@ async function getMatchById(req, res) {
       });
     }
 
-    const viewer = req.user._id.toString();
+    const viewer = req.user._id;
     const isParticipant =
-      match.lostListing.createdBy.toString() === viewer ||
-      match.foundListing.createdBy.toString() === viewer;
+      match.lostListing.createdBy === viewer || match.foundListing.createdBy === viewer;
 
     if (!isParticipant) {
       return res.status(403).json({ message: "You do not have access to this match." });
@@ -134,10 +133,6 @@ async function getMatchById(req, res) {
 
     return res.status(200).json({ match: matchView(match, req.user._id) });
   } catch (error) {
-    if (error.name === "CastError") {
-      return res.status(400).json({ message: "Invalid match id." });
-    }
-
     console.error(`Unable to retrieve match: ${error.message}`);
     return res.status(500).json({ message: "Unable to retrieve match." });
   }

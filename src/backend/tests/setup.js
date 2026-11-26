@@ -1,37 +1,38 @@
 require("dotenv").config();
 
-const mongoose = require("mongoose");
+const { close, query } = require("../db/pool");
+const { migrate } = require("../db/migrate");
 
 jest.setTimeout(30000);
 
-function getTestDatabaseUri() {
-  if (process.env.MONGODB_URI_TEST) {
-    return process.env.MONGODB_URI_TEST;
-  }
+// Child tables first, so foreign keys never block a delete.
+const TABLES_IN_DELETE_ORDER = [
+  "ClaimEvidence",
+  "Messages",
+  "Notifications",
+  "Reports",
+  "AuditLogs",
+  "Claims",
+  "Matches",
+  "Listings",
+  "Categories",
+  "Users",
+];
 
-  const baseUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/lost_and_found";
-  const [withoutQuery, query] = baseUri.split("?");
-  const trimmed = withoutQuery.replace(/\/$/, "");
-  const lastSlash = trimmed.lastIndexOf("/");
-  const prefix = lastSlash >= 0 ? trimmed.slice(0, lastSlash) : trimmed;
-  const databaseName = "lost_and_found_test";
-
-  return `${prefix}/${databaseName}${query ? `?${query}` : ""}`;
-}
+let migrated = null;
 
 beforeAll(async () => {
-  await mongoose.connect(getTestDatabaseUri());
+  // The schema is applied once per test file process (idempotent).
+  migrated = migrated || migrate();
+  await migrated;
 });
 
 beforeEach(async () => {
-  const collections = await mongoose.connection.db.collections();
-
-  for (const collection of collections) {
-    await collection.deleteMany({});
+  for (const table of TABLES_IN_DELETE_ORDER) {
+    await query(`DELETE FROM dbo.${table}`);
   }
 });
 
 afterAll(async () => {
-  await mongoose.connection.dropDatabase();
-  await mongoose.connection.close();
+  await close();
 });

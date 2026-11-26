@@ -5,7 +5,7 @@ function Home() {
 
   return (
     <div className="home-page">
-      <h1>Lost and Found for Campus</h1>
+      <h1>Campus Lost &amp; Found</h1>
 
       <p>
         Report lost or found items, search campus listings, and help return
@@ -13,14 +13,13 @@ function Home() {
       </p>
 
       <div className="home-actions">
-        <Link to="/listings">
-          <button>Browse Listings</button>
-        </Link>
+        <Link to="/listings" className="btn primary">Browse Listings</Link>
 
+        {!token && (
+          <Link to="/register" className="btn">Create Account</Link>
+        )}
         {token && (
-          <Link to="/listings/new">
-            <button>Create Listing</button>
-          </Link>
+          <Link to="/listings/new" className="btn">Report Lost/Found</Link>
         )}
       </div>
     </div>

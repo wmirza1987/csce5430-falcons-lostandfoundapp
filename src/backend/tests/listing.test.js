@@ -49,7 +49,7 @@ describe("Listing API", () => {
 
   test("GET /api/listings/:id should return 404 for a well formed but nonexistent id", async () => {
     const response = await request(app)
-      .get("/api/listings/507f1f77bcf86cd799439011");
+      .get("/api/listings/507f1f77-bcf8-46d7-9943-9011507f1f77");
 
     expect(response.statusCode).toBe(404);
   });

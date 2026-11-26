@@ -34,14 +34,16 @@ Lost and Found for Campus centers on a simple core workflow: a user posts a lost
 
 | Layer | Choice |
 |---|---|
-| Frontend | React (ES6+) |
-| Backend | Node.js + Express |
-| Database | MongoDB (local Docker for development; Atlas free tier for deployment) |
-| Notifications | Nodemailer |
-| Maps | Leaflet + OpenStreetMap (no API key required) |
-| Hosting | Render / Vercel (free tier) |
+| Frontend | React (ES6+) + Vite |
+| Backend | Node.js + Express 5 on Azure App Service (Linux) |
+| Database | Azure SQL Database (parameterized queries via `mssql`) |
+| Photos and claim evidence | Azure Blob Storage, private containers (evidence is AES-256-GCM encrypted) |
+| Secrets | Azure Key Vault, read through App Service Key Vault references |
+| Email | Azure Communication Services Email |
+| Maps | Leaflet + OpenStreetMap |
+| Identity to Azure services | System-assigned managed identity (no connection strings or passwords in config) |
 
-Every external dependency above is free-tier or no-cost by design, to keep the project easy to implement and inexpensive to run for the semester.
+The live deployment is described in `docs/azure-resources.md`.
 
 ---
 
@@ -54,7 +56,7 @@ csce5430-falcons-lostandfoundapp/
 ├── note-deliverable-1.txt        # File manifest for Deliverable 1
 ├── note-deliverable-2.txt        # File manifest for Deliverable 2
 ├── src/
-│   ├── backend/                  # Express API, MongoDB models, Jest tests
+│   ├── backend/                  # Express API, Azure SQL repositories, Jest tests
 │   └── frontend/                 # React + Vite client
 ├── reports/                      # Submitted deliverable reports (Word/PDF)
 ├── planning/                     # Timelines, risk management, phase planning docs
@@ -110,8 +112,8 @@ Messaging refreshes no more than once every 15 seconds in the client, with a man
 ### Prerequisites
 
 - Node.js (LTS version) and npm or pnpm
-- MongoDB 7+ (local Docker container or an Atlas connection string)
-- Optional: an SMTP account (Mailtrap, Ethereal, or similar) for verification, reset, and notification email
+- A SQL Server for local development (for example SQL Server Express) or an Azure SQL Database
+- Optional: an Azure Communication Services Email resource (`ACS_ENDPOINT`, `EMAIL_FROM`) for verification, reset, and notification email; without it, email is skipped
 
 ### Installation
 
@@ -128,71 +130,39 @@ cd ../frontend
 pnpm install
 ```
 
-### Required Environment Variables
+### Environment Variables
 
-Copy `src/backend/.env.example` to `src/backend/.env` and `src/frontend/.env.example` to `src/frontend/.env`. Never commit `.env`.
+Copy `src/backend/.env.example` to `src/backend/.env` and `src/frontend/.env.example` to `src/frontend/.env`. Never commit `.env`. The example files list every setting with no real values. Key settings: `DB_SERVER`, `DB_NAME`, `DB_AUTH` (`aad` for Azure, `windows` or `sql` for a local SQL Server), `DB_NAME_TEST`, `JWT_SECRET`, `EVIDENCE_ENCRYPTION_KEY`, `STORAGE_ACCOUNT_NAME`, `ACS_ENDPOINT`, `EMAIL_FROM`, `APP_BASE_URL`, `CLIENT_ORIGIN`, `MATCH_THRESHOLD`.
 
-Backend (`src/backend/.env`):
-
-| Variable | Purpose |
-|---|---|
-| `PORT` | Port the Express API listens on (default `5000`) |
-| `MONGODB_URI` | MongoDB connection string |
-| `MONGODB_URI_TEST` | Separate database used by Jest (defaults to a `_test` suffix) |
-| `JWT_SECRET` | Long random signing secret for authenticated sessions |
-| `APP_BASE_URL` | Public client URL used in verification/reset links |
-| `CLIENT_ORIGIN` | Comma-separated allowed browser origins for CORS |
-| `SMTP_HOST` | Email provider host (leave blank to skip delivery locally) |
-| `SMTP_PORT` | Email provider port |
-| `SMTP_USER` | Email provider account username |
-| `SMTP_PASS` | Email provider account password or API key |
-| `SMTP_FROM` | "From" address used on outgoing email |
-| `EVIDENCE_ENCRYPTION_KEY` | Base64 or hex 32-byte key for AES-256-GCM encryption of claim evidence. If unset, a key is derived from `JWT_SECRET`; set it explicitly in production |
-| `MATCH_THRESHOLD` | Optional. Minimum match score (0 to 1) that creates a potential match. Default `0.6` |
-
-Frontend (`src/frontend/.env`):
-
-| Variable | Purpose |
-|---|---|
-| `VITE_API_BASE_URL` | Backend URL, e.g. `http://localhost:5000` |
+When `STORAGE_ACCOUNT_NAME` is unset the API stores files under `.local-storage/`, and when `ACS_ENDPOINT` is unset email delivery is skipped (notifications are still created in-app).
 
 ### Running Locally
 
 ```bash
-# optional local MongoDB
-docker run -d --name lostfound-mongo --restart unless-stopped \
-  -p 127.0.0.1:27017:27017 \
-  -v lostfound-mongo-data:/data/db \
-  mongo:7.0
-
-# from src/backend
-pnpm dev           # starts the API with hot reload
+# from src/backend: apply the schema, then start the API
+node db/migrate.js
+pnpm dev
 
 # from src/frontend, in a separate terminal
-pnpm dev           # starts the React development server
+pnpm dev
 ```
+
+A local SQL Server (for example SQL Server Express) works for development. Optional demo data: `pnpm seed` (see `.env.example`).
 
 ### Running Tests
 
 ```bash
-# from src/backend (uses MONGODB_URI_TEST or the local _test database;
-# a MongoDB server must be reachable before the tests start)
-pnpm test          # 9 suites, 113 tests: auth, listings, matching, claims,
-                   # notifications, messaging, reporting/moderation, admin/analytics, campus map
+# from src/backend (runs against DB_NAME_TEST; refuses to touch DB_NAME)
+pnpm test
 
 # from src/frontend
-pnpm build         # production build check
-pnpm lint          # oxlint static checks
+pnpm build
+pnpm lint
 ```
 
 ### Deployment
 
-1. Push the `main` branch to GitHub.
-2. Deploy `src/backend` to Render (or a similar free-tier host); set the environment variables listed above in the host's dashboard.
-3. Deploy `src/frontend` to Vercel (or a similar free-tier host); set `CLIENT_ORIGIN` on the API to the deployed client URL and `VITE_API_BASE_URL` on the client to the API URL.
-4. Confirm the deployed client can reach the deployed API before demoing.
-
----
+The API App Service also serves the built client (`src/backend/public`, produced by `pnpm build` in `src/frontend`), so the site is a single origin with no CORS. Rate limiting is an in-memory limiter and is correct for a single instance only; scale-out would need a shared store such as Azure Cache for Redis.
 
 ## Project Timeline
 

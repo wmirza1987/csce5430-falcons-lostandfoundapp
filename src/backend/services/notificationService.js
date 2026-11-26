@@ -1,5 +1,5 @@
-const Notification = require("../models/Notification");
-const User = require("../models/User");
+const notificationsRepo = require("../repos/notifications");
+const usersRepo = require("../repos/users");
 const { sendNotificationEmail } = require("./emailService");
 
 const MAX_EMAIL_ATTEMPTS = 3;
@@ -26,26 +26,30 @@ function buildEmailBody(text, actionPath) {
 async function sendAndRecordEmail(notification, { to, subject, body }) {
   // Record the attempt before sending so a crash mid-send is visible, and only
   // mark "sent" once the provider reports success (UT-NOTIF-08).
-  notification.emailStatus = "pending";
-  notification.emailAttempts += 1;
-  await notification.save();
+  const pending = await notificationsRepo.markEmailPending(notification._id);
+  notification.emailStatus = pending.emailStatus;
+  notification.emailAttempts = pending.emailAttempts;
+
+  let status;
 
   try {
     const result = await sendNotificationEmail({ to, subject, text: body });
 
     if (result.delivered) {
-      notification.emailStatus = "sent";
-    } else if (result.reason === "smtp_not_configured") {
-      notification.emailStatus = "skipped";
+      status = "sent";
+    } else if (result.reason === "email_not_configured") {
+      status = "skipped";
     } else {
-      notification.emailStatus = "failed";
+      status = "failed";
     }
   } catch (error) {
     console.error(`Unable to deliver notification email: ${error.message}`);
-    notification.emailStatus = "failed";
+    status = "failed";
   }
 
-  await notification.save();
+  const finished = await notificationsRepo.setEmailStatus(notification._id, status);
+  notification.emailStatus = finished.emailStatus;
+  notification.updatedAt = finished.updatedAt;
   return notification;
 }
 
@@ -63,9 +67,10 @@ async function createNotification({
   emailText = null,
 }) {
   let notification;
+  const emailBody = buildEmailBody(emailText || message, actionPath);
 
   try {
-    notification = await Notification.create({
+    notification = await notificationsRepo.create({
       user: userId,
       type,
       message: removeContactDetails(message),
@@ -73,7 +78,7 @@ async function createNotification({
       listing: listingId,
       claim: claimId,
       emailSubject,
-      emailBody: buildEmailBody(emailText || message, actionPath),
+      emailBody,
     });
   } catch (error) {
     console.error(`Unable to persist notification: ${error.message}`);
@@ -81,9 +86,7 @@ async function createNotification({
   }
 
   try {
-    const user = await User.findById(userId).select(
-      "email emailNotifications isActive"
-    );
+    const user = await usersRepo.findById(userId);
 
     if (!user || !user.isActive || !user.emailNotifications) {
       return notification;
@@ -92,7 +95,7 @@ async function createNotification({
     await sendAndRecordEmail(notification, {
       to: user.email,
       subject: emailSubject,
-      body: notification.emailBody,
+      body: emailBody,
     });
   } catch (error) {
     console.error(`Unable to record notification email: ${error.message}`);
@@ -103,20 +106,15 @@ async function createNotification({
 
 // Re-attempts email for notifications whose earlier send failed (UT-NOTIF-09).
 async function retryFailedEmails({ limit = 25 } = {}) {
-  const failed = await Notification.find({
-    emailStatus: "failed",
-    emailAttempts: { $lt: MAX_EMAIL_ATTEMPTS },
-  })
-    .select("+emailSubject +emailBody")
-    .sort({ createdAt: 1 })
-    .limit(limit);
+  const failed = await notificationsRepo.findFailedForRetry({
+    maxAttempts: MAX_EMAIL_ATTEMPTS,
+    limit,
+  });
 
   let retried = 0;
 
   for (const notification of failed) {
-    const user = await User.findById(notification.user).select(
-      "email emailNotifications isActive"
-    );
+    const user = await usersRepo.findById(notification.user);
 
     if (!user || !user.isActive || !user.emailNotifications) {
       continue;
@@ -272,32 +270,15 @@ async function notifyResolution(claim, listing) {
 }
 
 async function getUserNotifications(userId, { unreadOnly = false, limit = 50 } = {}) {
-  const query = { user: userId };
-
-  if (unreadOnly) {
-    query.isRead = false;
-  }
-
-  return Notification.find(query)
-    .sort({ createdAt: -1 })
-    .limit(Math.min(Math.max(Number(limit) || 50, 1), 100))
-    .populate("listing", "title type status")
-    .lean();
+  return notificationsRepo.listForUser(userId, { unreadOnly, limit });
 }
 
 async function markNotificationRead(notificationId, userId) {
-  return Notification.findOneAndUpdate(
-    { _id: notificationId, user: userId },
-    { $set: { isRead: true } },
-    { new: true }
-  );
+  return notificationsRepo.markRead(notificationId, userId);
 }
 
 async function markAllNotificationsRead(userId) {
-  return Notification.updateMany(
-    { user: userId, isRead: false },
-    { $set: { isRead: true } }
-  );
+  return { modifiedCount: await notificationsRepo.markAllRead(userId) };
 }
 
 module.exports = {

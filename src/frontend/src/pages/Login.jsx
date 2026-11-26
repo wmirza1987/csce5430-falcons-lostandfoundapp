@@ -47,64 +47,66 @@ function Login() {
   };
 
   return (
-    <div>
-      <h1>Login</h1>
+    <div className="auth-wrap">
+      <div className="card auth-card">
+        <h1>Sign In</h1>
+        <p className="sub">Welcome back to Campus Lost &amp; Found.</p>
 
-      {notice && <p role="status">{notice}</p>}
+        {notice && <p role="status" className="flash flash-success">{notice}</p>}
 
-      <form onSubmit={handleSubmit} noValidate>
-        <div>
-          <label htmlFor="login-email">Email</label>
-          <br />
-          <input
-            id="login-email"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            aria-invalid={Boolean(fieldErrors.email)}
-            aria-describedby={fieldErrors.email ? "login-email-error" : undefined}
-          />
-          {fieldErrors.email && (
-            <p id="login-email-error" role="alert" className="field-error">
-              {fieldErrors.email}
-            </p>
-          )}
-        </div>
+        <form onSubmit={handleSubmit} noValidate className="plain-form">
+          <div className="form-field">
+            <label htmlFor="login-email">Email</label>
+            <input
+              id="login-email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              aria-invalid={Boolean(fieldErrors.email)}
+              aria-describedby={fieldErrors.email ? "login-email-error" : undefined}
+            />
+            {fieldErrors.email && (
+              <p id="login-email-error" role="alert" className="field-error">
+                {fieldErrors.email}
+              </p>
+            )}
+          </div>
 
-        <br />
+          <div className="form-field">
+            <label htmlFor="login-password">Password</label>
+            <input
+              id="login-password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              aria-invalid={Boolean(fieldErrors.password)}
+              aria-describedby={fieldErrors.password ? "login-password-error" : undefined}
+            />
+            {fieldErrors.password && (
+              <p id="login-password-error" role="alert" className="field-error">
+                {fieldErrors.password}
+              </p>
+            )}
+          </div>
 
-        <div>
-          <label htmlFor="login-password">Password</label>
-          <br />
-          <input
-            id="login-password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            aria-invalid={Boolean(fieldErrors.password)}
-            aria-describedby={fieldErrors.password ? "login-password-error" : undefined}
-          />
-          {fieldErrors.password && (
-            <p id="login-password-error" role="alert" className="field-error">
-              {fieldErrors.password}
-            </p>
-          )}
-        </div>
+          <button type="submit" className="primary block">Sign In</button>
+        </form>
 
-        <br />
+        {formError && (
+          <p role="alert" className="field-error">
+            {formError}
+          </p>
+        )}
 
-        <button type="submit">Login</button>
-      </form>
-
-      <p>
-        <Link to="/forgot-password">Forgot your password?</Link>
-      </p>
-
-      {formError && (
-        <p role="alert" className="field-error">
-          {formError}
+        <p className="auth-alt">
+          <Link to="/forgot-password">Forgot your password?</Link>
         </p>
-      )}
+        <p className="auth-alt">
+          New here? <Link to="/register">Create an account</Link>
+        </p>
+      </div>
     </div>
   );
 }

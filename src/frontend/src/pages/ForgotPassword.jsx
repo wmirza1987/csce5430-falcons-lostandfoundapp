@@ -28,34 +28,35 @@ function ForgotPassword() {
   };
 
   return (
-    <div>
-      <h1>Forgot Password</h1>
+    <div className="auth-wrap">
+      <div className="card auth-card">
+        <h1>Forgot Password</h1>
+        <p className="sub">Enter your email and we will send you a reset link.</p>
 
-      {!submitted ? (
-        <form onSubmit={handleSubmit} noValidate>
-          <div>
-            <label htmlFor="forgot-email">Email</label>
-            <br />
-            <input
-              id="forgot-email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-          </div>
+        {!submitted ? (
+          <form onSubmit={handleSubmit} noValidate className="plain-form">
+            <div className="form-field">
+              <label htmlFor="forgot-email">Email</label>
+              <input
+                id="forgot-email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+            </div>
 
-          <br />
+            <button type="submit" className="primary block">Send Reset Link</button>
+          </form>
+        ) : (
+          <p role="status" className="flash flash-success">{message}</p>
+        )}
 
-          <button type="submit">Send Reset Link</button>
-        </form>
-      ) : (
-        <p role="status">{message}</p>
-      )}
-
-      <p>
-        <Link to="/login">Back to login</Link>
-      </p>
+        <p className="auth-alt">
+          <Link to="/login">Back to sign in</Link>
+        </p>
+      </div>
     </div>
   );
 }

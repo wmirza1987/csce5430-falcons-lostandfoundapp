@@ -1,9 +1,9 @@
 const request = require("supertest");
 const app = require("../app");
-const AuditLog = require("../models/AuditLog");
-const Listing = require("../models/Listing");
-const Message = require("../models/Message");
-const Report = require("../models/Report");
+const auditLogsRepo = require("../repos/auditLogs");
+const listingsRepo = require("../repos/listings");
+const messagesRepo = require("../repos/messages");
+const reportsRepo = require("../repos/reports");
 const {
   authHeader,
   createListing,
@@ -98,7 +98,7 @@ describe("FR-ADM-01: reports and moderation", () => {
     const reported = await reportListing(reporter, listing._id);
     const hidden = await decide(moderator, reported.body.report.id, "hide", "Confirmed spam listing.");
     expect(hidden.statusCode).toBe(200);
-    expect(await Listing.findById(listing._id)).toMatchObject({ isHidden: true });
+    expect(await listingsRepo.findById(listing._id)).toMatchObject({ isHidden: true });
 
     const browse = await request(app).get("/api/v1/listings");
     expect(browse.body.listings.map((item) => String(item._id))).not.toContain(String(listing._id));
@@ -112,7 +112,7 @@ describe("FR-ADM-01: reports and moderation", () => {
     const restoreReport = await reportListing(reporter, listing._id, "Please restore this listing.");
     const restored = await decide(moderator, restoreReport.body.report.id, "restore", "Reviewed and restored.");
     expect(restored.statusCode).toBe(200);
-    expect(await Listing.findById(listing._id)).toMatchObject({ isHidden: false });
+    expect(await listingsRepo.findById(listing._id)).toMatchObject({ isHidden: false });
 
     const browseAfter = await request(app).get("/api/v1/listings");
     expect(browseAfter.body.listings.map((item) => String(item._id))).toContain(String(listing._id));
@@ -136,7 +136,7 @@ describe("FR-ADM-01: reports and moderation", () => {
     expect(participantView.statusCode).toBe(200);
     const json = JSON.stringify(participantView.body);
     expect(json).not.toContain("SECRET-MESSAGE-BODY-DO-NOT-SHOW");
-    expect(await Message.findById(messageId)).toMatchObject({ isHidden: true });
+    expect(await messagesRepo.findById(messageId)).toMatchObject({ isHidden: true });
 
     // A second, still-open report re-grants the moderator access to the thread;
     // the hidden message is shown only as a content-free placeholder.
@@ -174,9 +174,9 @@ describe("FR-ADM-02: administration and audit", () => {
     expect(response.statusCode).toBe(200);
     expect(response.body.user.role).toBe("moderator");
 
-    const logs = await AuditLog.find({ action: "role.changed" }).lean();
+    const logs = await auditLogsRepo.list({ action: "role.changed" });
     expect(logs).toHaveLength(1);
-    expect(String(logs[0].actor)).toBe(String(admin._id));
+    expect(String(logs[0].actorId)).toBe(String(admin._id));
     expect(String(logs[0].targetId)).toBe(String(user._id));
     expect(logs[0].detail).toBe("user to moderator");
   });
@@ -246,7 +246,7 @@ describe("FR-ADM-02: administration and audit", () => {
       .set(authHeader(claimant))
       .send({ body: "A-PRIVATE-MESSAGE-BODY" });
     await reportMessage(claimant, sent.body.message.id);
-    await decide(admin, (await Report.findOne({}))._id, "hide", "Policy reason for hiding.");
+    await decide(admin, (await reportsRepo.listAll())[0]._id, "hide", "Policy reason for hiding.");
 
     const response = await request(app).get("/api/v1/admin/audit").set(authHeader(admin));
     expect(response.statusCode).toBe(200);

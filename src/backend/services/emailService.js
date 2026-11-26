@@ -1,51 +1,59 @@
-// Sends transactional emails (verification, password reset) through an
-// authenticated SMTP provider, consistent with IF COM 03 and the Deliverable 1
-// free tier plan (a free SMTP account, Mailtrap, or Ethereal during development).
+// Sends transactional emails (verification, password reset, notifications)
+// through Azure Communication Services Email. The client authenticates with
+// DefaultAzureCredential (managed identity in App Service, az login locally).
 //
-// If SMTP environment variables are not configured, this falls back to logging
-// the email to the console instead of sending it, so local development and
-// testing are not blocked on having a real provider account set up.
-const nodemailer = require("nodemailer");
+// If ACS_ENDPOINT or EMAIL_FROM is not set, the email is not sent and the call
+// returns { delivered: false, reason: "email_not_configured" }, so local
+// development and tests are not blocked on Azure resources.
+const { EmailClient } = require("@azure/communication-email");
+const { DefaultAzureCredential } = require("@azure/identity");
 
-function isSmtpConfigured() {
-  return Boolean(
-    process.env.SMTP_HOST &&
-      process.env.SMTP_PORT &&
-      process.env.SMTP_USER &&
-      process.env.SMTP_PASS
-  );
+const POLL_INTERVAL_MS = 2000;
+const SEND_TIMEOUT_MS = 60 * 1000;
+
+let client = null;
+
+function isEmailConfigured() {
+  return Boolean(process.env.ACS_ENDPOINT && process.env.EMAIL_FROM);
 }
 
-function getTransporter() {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT),
-    secure: Number(process.env.SMTP_PORT) === 465,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+function getClient() {
+  if (!client) {
+    client = new EmailClient(process.env.ACS_ENDPOINT, new DefaultAzureCredential());
+  }
+
+  return client;
+}
+
+// For tests only.
+function resetClient() {
+  client = null;
 }
 
 async function sendMail({ to, subject, text }) {
-  if (!isSmtpConfigured()) {
+  if (!isEmailConfigured()) {
     // Never log the recipient, subject, body, or links: they can contain
     // verification/reset tokens or private notification content (NFR-PRIV-01).
     console.log(
-      "Email not sent: SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS to deliver mail."
+      "Email not sent: Azure Communication Services is not configured. Set ACS_ENDPOINT and EMAIL_FROM to deliver mail."
     );
-    return { delivered: false, reason: "smtp_not_configured" };
+    return { delivered: false, reason: "email_not_configured" };
   }
 
-  const transporter = getTransporter();
-
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM || "no-reply@lostandfound.unt.edu",
-    to,
-    subject,
-    text,
+  const poller = await getClient().beginSend({
+    senderAddress: process.env.EMAIL_FROM,
+    content: { subject, plainText: text },
+    recipients: { to: [{ address: to }] },
   });
+
+  const result = await poller.pollUntilDone({
+    abortSignal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+    updateIntervalInMs: POLL_INTERVAL_MS,
+  });
+
+  if (result.status !== "Succeeded") {
+    throw new Error(`Email send ended with status ${result.status}.`);
+  }
 
   return { delivered: true };
 }
@@ -76,7 +84,7 @@ async function sendNotificationEmail({ to, subject, text }) {
   return {
     delivered: false,
     attempts: 2,
-    reason: "smtp_error",
+    reason: "email_error",
     error: lastError?.message,
   };
 }
@@ -102,7 +110,8 @@ async function sendPasswordResetEmail(toEmail, rawToken) {
 }
 
 module.exports = {
-  isSmtpConfigured,
+  isEmailConfigured,
+  resetClient,
   sendMail,
   sendNotificationEmail,
   sendVerificationEmail,

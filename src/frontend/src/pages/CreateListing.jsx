@@ -137,7 +137,7 @@ function CreateListing() {
           shown publicly.
         </p>
 
-        <div className="listing-card">
+        <div className="card">
           <h2>{formData.title}</h2>
           <p>
             <strong>Type:</strong> {formData.type}
@@ -182,7 +182,7 @@ function CreateListing() {
         <button type="button" onClick={() => setPreview(false)}>
           Back to edit
         </button>{" "}
-        <button type="button" onClick={submitListing}>
+        <button type="button" className="primary" onClick={submitListing}>
           Confirm and Submit
         </button>
 
@@ -195,7 +195,7 @@ function CreateListing() {
 
   return (
     <div>
-      <h1>Create Listing</h1>
+      <h1>Report Lost/Found Item</h1>
 
       <form onSubmit={handlePreview} noValidate>
         <div>
@@ -359,7 +359,7 @@ function CreateListing() {
             aria-invalid={Boolean(fieldErrors.images)}
             aria-describedby={fieldErrors.images ? "create-images-error" : undefined}
           />
-          <p>Up to 3 images, JPEG/PNG/WebP, 5 MB each.</p>
+          <p className="hint">Up to 3 image files, JPEG PNG WebP up to 5MB.</p>
           {fieldErrors.images && (
             <p id="create-images-error" role="alert" className="field-error">{fieldErrors.images}</p>
           )}
@@ -382,7 +382,7 @@ function CreateListing() {
 
         <br />
 
-        <button type="submit">Preview Listing</button>
+        <div className="actions"><button type="submit" className="primary">Preview Listing</button></div>
       </form>
 
       {formMessage && (

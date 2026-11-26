@@ -116,7 +116,7 @@ function Notifications() {
     <div>
       <h1>Notifications</h1>
 
-      <p>
+      <p className={unreadCount > 0 ? "flash flash-warning" : "hint"}>
         <strong>Unread:</strong> {unreadCount}
       </p>
 

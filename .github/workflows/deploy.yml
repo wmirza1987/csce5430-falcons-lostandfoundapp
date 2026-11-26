@@ -1,0 +1,71 @@
+name: Build and deploy to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_WEBAPP_NAME: lfcampus-api-s2iv1
+  AZURE_RESOURCE_GROUP: rg-lostfound-falcons
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build client
+        working-directory: src/frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm build
+
+      - name: Stage API and client
+        run: |
+          mkdir stage
+          rsync -a --exclude node_modules --exclude tests --exclude scripts --exclude .env \
+            --exclude .local-storage --exclude pnpm-workspace.yaml src/backend/ stage/
+          cp -r src/frontend/dist stage/public
+          (cd stage && zip -qr ../deploy.zip .)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deploy-package
+          path: deploy.zip
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: deploy-package
+
+      # Federated (OIDC) sign-in: no secrets are stored, only these three ids
+      # configured as repository variables or secrets.
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # App Service runs the remote build (npm install) during zip deploy.
+      - name: Deploy
+        run: |
+          az webapp deploy --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" \
+            --src-path deploy.zip --type zip --clean true --async true

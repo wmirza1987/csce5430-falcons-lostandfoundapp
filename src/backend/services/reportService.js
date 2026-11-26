@@ -1,8 +1,10 @@
-const Claim = require("../models/Claim");
-const Listing = require("../models/Listing");
-const Message = require("../models/Message");
-const Report = require("../models/Report");
-const User = require("../models/User");
+const { withTransaction } = require("../db/pool");
+const claimsRepo = require("../repos/claims");
+const listingsRepo = require("../repos/listings");
+const messagesRepo = require("../repos/messages");
+const reportsRepo = require("../repos/reports");
+const usersRepo = require("../repos/users");
+const { isGuid } = require("./validation");
 const { ACTIONS, recordAudit, safeDetail } = require("./auditService");
 const { createNotification } = require("./notificationService");
 
@@ -37,10 +39,7 @@ function reportView(report) {
 }
 
 async function notifyModerators(report) {
-  const moderators = await User.find({
-    role: { $in: ["moderator", "admin"] },
-    isActive: true,
-  }).select("_id");
+  const moderators = await usersRepo.listActiveStaff();
 
   for (const moderator of moderators) {
     await createNotification({
@@ -71,11 +70,15 @@ async function createReport({ user, targetType, targetId, reason }) {
     throw new ReportError(400, "A report reason must be 500 characters or fewer.");
   }
 
+  if (!isGuid(targetId)) {
+    throw new ReportError(400, "Invalid id.");
+  }
+
   let listing = null;
   let claim = null;
 
   if (targetType === "listing") {
-    listing = await Listing.findById(targetId);
+    listing = await listingsRepo.findById(targetId);
 
     if (!listing || listing.isDeleted) {
       throw new ReportError(404, "Listing not found.");
@@ -83,14 +86,11 @@ async function createReport({ user, targetType, targetId, reason }) {
 
     // Link an approved claim when possible so the report can also authorize a
     // moderator's access to the handoff thread (FR-COM-02).
-    const approvedClaim = await Claim.findOne({
-      listing: listing._id,
-      status: "approved",
-    }).sort({ decidedAt: -1 });
+    const approvedClaim = await claimsRepo.findLatestApprovedForListing(listing._id);
 
     claim = approvedClaim ? approvedClaim._id : null;
   } else {
-    const message = await Message.findById(targetId);
+    const message = await messagesRepo.findById(targetId);
 
     if (!message) {
       throw new ReportError(404, "Message not found.");
@@ -100,18 +100,17 @@ async function createReport({ user, targetType, targetId, reason }) {
     listing = message.listing;
   }
 
-  const duplicate = await Report.findOne({
+  const duplicate = await reportsRepo.findUnresolvedDuplicate({
     reporter: user._id,
     targetType,
     targetId,
-    status: { $ne: "resolved" },
   });
 
   if (duplicate) {
     throw new ReportError(409, "You already have an open report for this item.");
   }
 
-  const report = await Report.create({
+  const report = await reportsRepo.create({
     reporter: user._id,
     targetType,
     targetId,
@@ -136,20 +135,17 @@ async function createReport({ user, targetType, targetId, reason }) {
 }
 
 async function listReports({ status } = {}) {
-  const query = status ? { status } : {};
-  const reports = await Report.find(query)
-    .sort({ createdAt: -1 })
-    .populate("reporter", "firstName lastName")
-    .populate("handledBy", "firstName lastName")
-    .lean();
+  if (status !== undefined && typeof status !== "string") {
+    throw new ReportError(400, "Status must be a single text value.");
+  }
+
+  const reports = await reportsRepo.listPopulated({ status });
 
   return reports.map((report) => reportView(report));
 }
 
 async function getReport(reportId) {
-  const report = await Report.findById(reportId)
-    .populate("reporter", "firstName lastName")
-    .populate("handledBy", "firstName lastName");
+  const report = await reportsRepo.findByIdPopulated(reportId);
 
   if (!report) {
     throw new ReportError(404, "Report not found.");
@@ -163,11 +159,13 @@ async function startReview(report, moderator) {
     return report;
   }
 
-  report.status = "reviewing";
-  report.handledBy = moderator._id;
-  report.handledAt = new Date();
-  report.threadAccessAt = new Date();
-  await report.save();
+  // open -> reviewing is a conditional update; if another moderator got there
+  // first the report is already under review and nothing more is needed.
+  const started = await reportsRepo.startReview(report._id, moderator._id);
+
+  if (!started) {
+    return report;
+  }
 
   await recordAudit({
     actor: moderator._id,
@@ -177,7 +175,7 @@ async function startReview(report, moderator) {
     detail: `report ${report._id}`,
   });
 
-  return report;
+  return started;
 }
 
 async function assertThreadAccess({ claim, listing, user }) {
@@ -195,10 +193,7 @@ async function assertThreadAccess({ claim, listing, user }) {
 
   // FR-COM-02: moderators may read a handoff thread only while a report linked
   // to that thread is open or being reviewed.
-  const report = await Report.findOne({
-    claim: claim._id,
-    status: { $in: ["open", "reviewing"] },
-  }).sort({ createdAt: -1 });
+  const report = await reportsRepo.findActiveForClaim(claim._id);
 
   if (!report) {
     return { allowed: false, role: "moderator" };
@@ -223,7 +218,7 @@ async function notifyReportResolution({ report, decision }) {
   recipients.add(report.reporter.toString());
 
   if (report.listing) {
-    const listing = await Listing.findById(report.listing).select("createdBy");
+    const listing = await listingsRepo.findById(report.listing);
 
     if (listing) {
       recipients.add(listing.createdBy.toString());
@@ -231,7 +226,7 @@ async function notifyReportResolution({ report, decision }) {
   }
 
   if (report.claim) {
-    const claim = await Claim.findById(report.claim).select("claimant");
+    const claim = await claimsRepo.findById(report.claim);
 
     if (claim) {
       recipients.add(claim.claimant.toString());
@@ -261,7 +256,7 @@ async function decideReport({ reportId, moderator, decision, decisionNote }) {
     throw new ReportError(400, "Decision must be hide, restore, or dismiss.");
   }
 
-  const report = await Report.findById(reportId);
+  const report = await reportsRepo.findById(reportId);
 
   if (!report) {
     throw new ReportError(404, "Report not found.");
@@ -271,71 +266,69 @@ async function decideReport({ reportId, moderator, decision, decisionNote }) {
     throw new ReportError(409, "This report has already been resolved.");
   }
 
-  const note = String(decisionNote || "").trim().slice(0, 500);
+  const note = typeof decisionNote === "string" ? decisionNote.trim().slice(0, 500) : "";
 
   if ((decision === "hide" || decision === "restore") && note.length < 5) {
     throw new ReportError(400, "Record a short reason before hiding or restoring content.");
   }
 
-  let action = ACTIONS.REPORT_DECIDED;
+  // Visibility change, audit records and the resolve step commit together. The
+  // resolve is conditional, so two moderators cannot both decide one report.
+  const resolved = await withTransaction(async (tx) => {
+    const updated = await reportsRepo.resolve(
+      report._id,
+      { decision, decisionNote: note, handledBy: moderator._id },
+      tx
+    );
 
-  if (decision === "hide" || decision === "restore") {
-    const hidden = decision === "hide";
-
-    if (report.targetType === "listing") {
-      await Listing.findByIdAndUpdate(report.listing || report.targetId, {
-        $set: {
-          isHidden: hidden,
-          hiddenReason: hidden ? note : "",
-          hiddenBy: hidden ? moderator._id : null,
-          hiddenAt: hidden ? new Date() : null,
-        },
-      });
-
-      action = hidden ? ACTIONS.LISTING_HIDDEN : ACTIONS.LISTING_RESTORED;
-    } else {
-      await Message.findByIdAndUpdate(report.targetId, {
-        $set: {
-          isHidden: hidden,
-          hiddenReason: hidden ? note : "",
-          hiddenBy: hidden ? moderator._id : null,
-          hiddenAt: hidden ? new Date() : null,
-        },
-      });
-
-      action = hidden ? ACTIONS.MESSAGE_HIDDEN : ACTIONS.MESSAGE_RESTORED;
+    if (!updated) {
+      throw new ReportError(409, "This report has already been resolved.");
     }
 
-    await recordAudit({
-      actor: moderator._id,
-      action,
-      targetType: report.targetType,
-      targetId: report.targetId,
-      detail: `report ${report._id}`,
-    });
-  }
+    if (decision === "hide" || decision === "restore") {
+      const hidden = decision === "hide";
+      const change = { hidden, reason: note, hiddenBy: moderator._id };
+      let action;
 
-  report.status = "resolved";
-  report.decision = decision;
-  report.decisionNote = note;
-  report.handledBy = moderator._id;
-  report.handledAt = new Date();
-  report.threadAccessAt = null;
-  await report.save();
+      if (report.targetType === "listing") {
+        await listingsRepo.setHidden(report.listing || report.targetId, change, tx);
+        action = hidden ? ACTIONS.LISTING_HIDDEN : ACTIONS.LISTING_RESTORED;
+      } else {
+        await messagesRepo.setHidden(report.targetId, change, tx);
+        action = hidden ? ACTIONS.MESSAGE_HIDDEN : ACTIONS.MESSAGE_RESTORED;
+      }
 
-  await recordAudit({
-    actor: moderator._id,
-    action: ACTIONS.REPORT_DECIDED,
-    targetType: "report",
-    targetId: report._id,
-    detail: `decision ${safeDetail(decision)}`,
+      await recordAudit(
+        {
+          actor: moderator._id,
+          action,
+          targetType: report.targetType,
+          targetId: report.targetId,
+          detail: `report ${report._id}`,
+        },
+        tx
+      );
+    }
+
+    await recordAudit(
+      {
+        actor: moderator._id,
+        action: ACTIONS.REPORT_DECIDED,
+        targetType: "report",
+        targetId: report._id,
+        detail: `decision ${safeDetail(decision)}`,
+      },
+      tx
+    );
+
+    return updated;
   });
 
-  await notifyReportResolution({ report, decision }).catch((error) => {
+  await notifyReportResolution({ report: resolved, decision }).catch((error) => {
     console.error(`Unable to notify report resolution: ${error.message}`);
   });
 
-  return reportView(report);
+  return reportView(resolved);
 }
 
 module.exports = {

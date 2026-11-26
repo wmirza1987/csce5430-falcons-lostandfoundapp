@@ -1,9 +1,10 @@
 // FR-ADM-02: administrator-only account management, category catalog
 // management, and non-content audit retrieval. Every change writes an audit
 // record with IDs and a short reason only (NFR-PRIV-01).
-const AuditLog = require("../models/AuditLog");
-const Category = require("../models/Category");
-const User = require("../models/User");
+const auditLogsRepo = require("../repos/auditLogs");
+const categoriesRepo = require("../repos/categories");
+const usersRepo = require("../repos/users");
+const { isGuid } = require("./validation");
 const { ACTIONS, recordAudit } = require("./auditService");
 
 class AdminError extends Error {
@@ -39,9 +40,7 @@ function publicCategory(category) {
 }
 
 async function listUsers() {
-  const users = await User.find({ role: { $in: ["user", "moderator", "admin"] } })
-    .sort({ createdAt: -1 })
-    .limit(200);
+  const users = await usersRepo.list({ limit: 200 });
   return users.map(publicUser);
 }
 
@@ -53,7 +52,7 @@ async function changeRole({ admin, userId, role }) {
     throw new AdminError(400, "Role must be user or moderator.");
   }
 
-  const user = await User.findById(userId);
+  const user = await usersRepo.findById(userId);
 
   if (!user) {
     throw new AdminError(404, "User not found.");
@@ -64,8 +63,7 @@ async function changeRole({ admin, userId, role }) {
   }
 
   const previous = user.role;
-  user.role = role;
-  await user.save();
+  const updated = await usersRepo.setRole(user._id, role);
 
   await recordAudit({
     actor: admin._id,
@@ -75,11 +73,15 @@ async function changeRole({ admin, userId, role }) {
     detail: `${previous} to ${role}`,
   });
 
-  return publicUser(user);
+  return publicUser(updated);
 }
 
 async function setAccountActive({ admin, userId, isActive }) {
-  const user = await User.findById(userId);
+  if (typeof isActive !== "boolean") {
+    throw new AdminError(400, "isActive must be true or false.");
+  }
+
+  const user = await usersRepo.findById(userId);
 
   if (!user) {
     throw new AdminError(404, "User not found.");
@@ -89,8 +91,7 @@ async function setAccountActive({ admin, userId, isActive }) {
     throw new AdminError(409, "Administrator accounts cannot be changed here.");
   }
 
-  user.isActive = Boolean(isActive);
-  await user.save();
+  const updated = await usersRepo.setActive(user._id, Boolean(isActive));
 
   await recordAudit({
     actor: admin._id,
@@ -100,29 +101,30 @@ async function setAccountActive({ admin, userId, isActive }) {
     detail: `active ${Boolean(isActive)}`,
   });
 
-  return publicUser(user);
+  return publicUser(updated);
 }
 
 async function listCategories({ includeInactive = false } = {}) {
-  const query = includeInactive ? {} : { isActive: true };
-  const categories = await Category.find(query).sort({ name: 1 });
+  const categories = await categoriesRepo.list({ includeInactive });
   return categories.map(publicCategory);
 }
 
 async function createCategory({ admin, name, description }) {
-  const cleanName = String(name || "").trim().toLowerCase();
+  const cleanName = typeof name === "string" ? name.trim().toLowerCase() : "";
+  const cleanDescription = typeof description === "string" ? description.trim().slice(0, 300) : "";
 
   if (cleanName.length < 2 || cleanName.length > 60) {
     throw new AdminError(400, "Category name must be between 2 and 60 characters.");
   }
 
-  const existing = await Category.findOne({ name: cleanName });
+  const existing = await categoriesRepo.findByName(cleanName);
 
   if (existing) {
     if (!existing.isActive) {
-      existing.isActive = true;
-      existing.description = String(description || "").trim().slice(0, 300);
-      await existing.save();
+      const reactivated = await categoriesRepo.update(existing._id, {
+        isActive: true,
+        description: cleanDescription,
+      });
 
       await recordAudit({
         actor: admin._id,
@@ -132,15 +134,15 @@ async function createCategory({ admin, name, description }) {
         detail: `reactivated ${cleanName}`,
       });
 
-      return publicCategory(existing);
+      return publicCategory(reactivated);
     }
 
     throw new AdminError(409, "That category already exists.");
   }
 
-  const category = await Category.create({
+  const category = await categoriesRepo.create({
     name: cleanName,
-    description: String(description || "").trim().slice(0, 300),
+    description: cleanDescription,
     createdBy: admin._id,
   });
 
@@ -156,56 +158,79 @@ async function createCategory({ admin, name, description }) {
 }
 
 async function updateCategory({ admin, categoryId, name, description, isActive }) {
-  const category = await Category.findById(categoryId);
+  if (!isGuid(categoryId)) {
+    throw new AdminError(400, "Invalid id.");
+  }
+
+  const category = await categoriesRepo.findById(categoryId);
 
   if (!category) {
     throw new AdminError(404, "Category not found.");
   }
 
+  const changes = {};
+
   if (name !== undefined) {
-    const cleanName = String(name).trim().toLowerCase();
+    const cleanName = typeof name === "string" ? name.trim().toLowerCase() : "";
 
     if (cleanName.length < 2 || cleanName.length > 60) {
       throw new AdminError(400, "Category name must be between 2 and 60 characters.");
     }
 
-    category.name = cleanName;
+    changes.name = cleanName;
   }
 
   if (description !== undefined) {
-    category.description = String(description).trim().slice(0, 300);
+    if (typeof description !== "string") {
+      throw new AdminError(400, "Description must be text.");
+    }
+
+    changes.description = description.trim().slice(0, 300);
   }
 
   if (isActive !== undefined) {
-    category.isActive = Boolean(isActive);
+    if (typeof isActive !== "boolean") {
+      throw new AdminError(400, "isActive must be true or false.");
+    }
+
+    changes.isActive = isActive;
   }
 
-  await category.save();
+  const updated = await categoriesRepo.update(category._id, changes);
 
   await recordAudit({
     actor: admin._id,
     action: isActive === false ? ACTIONS.CATEGORY_DEACTIVATED : ACTIONS.CATEGORY_UPDATED,
     targetType: "category",
-    targetId: category._id,
-    detail: String(category.name),
+    targetId: updated._id,
+    detail: String(updated.name),
   });
 
-  return publicCategory(category);
+  return publicCategory(updated);
 }
 
 async function listAuditLogs({ limit = 100, action, actor } = {}) {
-  const query = {};
+  if (
+    (action !== undefined && typeof action !== "string") ||
+    (actor !== undefined && typeof actor !== "string")
+  ) {
+    throw new AdminError(400, "Audit filters must be single text values.");
+  }
 
-  if (action) query.action = String(action).slice(0, 80);
-  if (actor) query.actor = actor;
+  if (actor && !isGuid(actor)) {
+    throw new AdminError(400, "Invalid id.");
+  }
 
-  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 200);
+  const safeLimit = Math.min(
+    Math.max(parseInt(typeof limit === "string" ? limit : "100", 10) || 100, 1),
+    200
+  );
 
-  const logs = await AuditLog.find(query)
-    .sort({ createdAt: -1 })
-    .limit(safeLimit)
-    .populate("actor", "firstName lastName role")
-    .lean();
+  const logs = await auditLogsRepo.list({
+    action: action ? action.slice(0, 80) : undefined,
+    actor: actor || undefined,
+    limit: safeLimit,
+  });
 
   // Only non-content fields are returned. The detail field is sanitized on
   // write and holds IDs/action names, never message text or evidence.

@@ -1,5 +1,6 @@
-const Match = require("../models/Match");
-const Listing = require("../models/Listing");
+const listingsRepo = require("../repos/listings");
+const matchesRepo = require("../repos/matches");
+const { isUniqueViolation } = require("../repos/util");
 const { notifyPotentialMatch } = require("./notificationService");
 
 // FR-MATCH-01 scoring. Each component contributes a weighted share of a 0 to 1
@@ -175,8 +176,8 @@ function pairKey(lostId, foundId) {
 // matches. Returns the newly created matches.
 async function refreshMatchesForListing(listingOrId) {
   const listing =
-    typeof listingOrId === "string" || listingOrId?._bsontype
-      ? await Listing.findById(listingOrId)
+    typeof listingOrId === "string"
+      ? await listingsRepo.findById(listingOrId)
       : listingOrId;
 
   if (!listing) {
@@ -184,24 +185,15 @@ async function refreshMatchesForListing(listingOrId) {
   }
 
   const listingId = listing._id;
-  const existingMatches = await Match.find({
-    $or: [{ lostListing: listingId }, { foundListing: listingId }],
-  });
+  const existingMatches = await matchesRepo.findByListing(listingId);
 
   if (listing.isDeleted || listing.status !== "active") {
-    await Match.deleteMany({
-      _id: { $in: existingMatches.map((match) => match._id) },
-    });
+    await matchesRepo.deleteByIds(existingMatches.map((match) => match._id));
     return { listing, matches: [], newMatches: [] };
   }
 
   const oppositeType = listing.type === "lost" ? "found" : "lost";
-  const candidates = await Listing.find({
-    _id: { $ne: listingId },
-    type: oppositeType,
-    status: "active",
-    isDeleted: false,
-  });
+  const candidates = await listingsRepo.findMatchCandidates(listingId, oppositeType);
 
   const threshold = getMatchThreshold();
   const existingByPair = new Map(
@@ -226,19 +218,25 @@ async function refreshMatchesForListing(listingOrId) {
     const existing = existingByPair.get(key);
 
     if (existing) {
-      existing.score = details.score;
-      existing.factors = details.factors;
-      await existing.save();
-      matches.push(existing);
+      const updated = await matchesRepo.updateScore(existing._id, details);
+      matches.push(updated || existing);
     } else {
-      const match = await Match.create({
-        lostListing: lostListing._id,
-        foundListing: foundListing._id,
-        score: details.score,
-        factors: details.factors,
-      });
-      matches.push(match);
-      newMatches.push({ match, lostListing, foundListing });
+      try {
+        const match = await matchesRepo.create({
+          lostListing: lostListing._id,
+          foundListing: foundListing._id,
+          score: details.score,
+          factors: details.factors,
+        });
+        matches.push(match);
+        newMatches.push({ match, lostListing, foundListing });
+      } catch (error) {
+        // A concurrent refresh already stored this pair (unique index); that
+        // run owns the notification, so skip it here.
+        if (!isUniqueViolation(error)) {
+          throw error;
+        }
+      }
     }
   }
 
@@ -247,7 +245,7 @@ async function refreshMatchesForListing(listingOrId) {
     .map((match) => match._id);
 
   if (staleIds.length > 0) {
-    await Match.deleteMany({ _id: { $in: staleIds } });
+    await matchesRepo.deleteByIds(staleIds);
   }
 
   matches.sort((left, right) => right.score - left.score);
@@ -279,10 +277,8 @@ async function waitForPendingMatchJobs() {
   await Promise.allSettled([...pendingMatchJobs]);
 }
 
-async function removeMatchesForListing(listingId) {
-  await Match.deleteMany({
-    $or: [{ lostListing: listingId }, { foundListing: listingId }],
-  });
+async function removeMatchesForListing(listingId, tx) {
+  await matchesRepo.deleteByListing(listingId, tx);
 }
 
 module.exports = {

@@ -251,7 +251,7 @@ function EditListing() {
             multiple
             onChange={handleImageChange}
           />
-          <p>Leave empty to keep the current photos. Up to 3 images, JPEG/PNG/WebP, 5 MB each.</p>
+          <p className="hint">Leave empty to keep the current photos. Up to 3 image files, JPEG PNG WebP up to 5MB.</p>
         </div>
 
         <br />
@@ -269,7 +269,7 @@ function EditListing() {
 
         <br />
 
-        <button type="submit">Save Changes</button>
+        <button type="submit" className="primary">Save Changes</button>
       </form>
 
       {message && (

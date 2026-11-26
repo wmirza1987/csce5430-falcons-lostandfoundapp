@@ -1,15 +1,29 @@
-const Listing = require("../models/Listing");
-const { filesToImageUrls } = require("../middleware/uploadMiddleware");
+const listings = require("../repos/listings");
+const {
+  filesToImageNames,
+  removeListingImages,
+  storeListingImages,
+} = require("../middleware/uploadMiddleware");
 const {
   removeMatchesForListing,
   scheduleMatchRefresh,
 } = require("../services/matchingService");
+const { isGuid, isString, queryString } = require("../services/validation");
 
 const MAX_PAGE_SIZE = 20;
+const MAX_PAGE_NUMBER = 100000;
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+// Field rules mirror the old schema: [path label, required, max length].
+const TEXT_RULES = {
+  title: ["title", true, 100],
+  category: ["category", true, null],
+  brand: ["brand", false, 60],
+  color: ["color", false, 40],
+  description: ["description", true, 1000],
+  building: ["location.building", true, null],
+  zone: ["location.zone", false, null],
+  privateDetails: ["privateDetails", false, 500],
+};
 
 function parseSearchDate(value, fieldName) {
   if (!value) {
@@ -25,18 +39,81 @@ function parseSearchDate(value, fieldName) {
   return { date };
 }
 
-function validationMessage(error) {
-  if (error?.name === "ValidationError") {
-    return Object.values(error.errors)
-      .map((item) => item.message)
-      .join(" ");
-  }
-
-  return "Please check the submitted fields.";
+// Realm-safe date check (a Date from the database driver may come from another
+// JavaScript realm, so instanceof is not reliable).
+function isValidDate(value) {
+  return Object.prototype.toString.call(value) === "[object Date]" && !Number.isNaN(value.getTime());
 }
 
 function logError(context, error) {
   console.error(`${context}: ${error.message}`);
+}
+
+// Validates a complete listing candidate and returns a list of messages (empty
+// when valid). Every request-supplied value must be text, a date, or absent.
+function validateListing(values) {
+  const messages = [];
+
+  if (values.type === undefined || values.type === null || values.type === "") {
+    messages.push("Path `type` is required.");
+  } else if (!isString(values.type) || !["lost", "found"].includes(values.type)) {
+    messages.push(`\`${isString(values.type) ? values.type : "value"}\` is not a valid enum value for path \`type\`.`);
+  }
+
+  for (const [field, [label, required, maxLength]] of Object.entries(TEXT_RULES)) {
+    const value = values[field];
+
+    if (value === undefined || value === null) {
+      if (required) {
+        messages.push(`Path \`${label}\` is required.`);
+      }
+
+      continue;
+    }
+
+    if (!isString(value)) {
+      messages.push(`Path \`${label}\` must be text.`);
+      continue;
+    }
+
+    const trimmed = value.trim();
+
+    if (required && trimmed === "") {
+      messages.push(`Path \`${label}\` is required.`);
+    } else if (maxLength && trimmed.length > maxLength) {
+      messages.push(
+        `Path \`${label}\` (\`${trimmed}\`) is longer than the maximum allowed length (${maxLength}).`
+      );
+    }
+  }
+
+  if (values.date === undefined || values.date === null || values.date === "") {
+    messages.push("Path `date` is required.");
+  } else if (!isValidDate(values.date)) {
+    messages.push("Path `date` must be a valid date.");
+  }
+
+  if (values.type === "found" && (!values.images || values.images.length === 0)) {
+    messages.push("Found-item listings must include at least one image.");
+  }
+
+  return messages;
+}
+
+// Converts the request's raw date value to a Date. Only strings are accepted;
+// anything else is passed through unchanged so validateListing rejects it.
+function toDate(value) {
+  if (value === undefined || value === null || value === "") {
+    return value;
+  }
+
+  return isString(value) ? new Date(value) : value;
+}
+
+function validationFailure(res, messages) {
+  return res.status(400).json({
+    message: messages.length > 0 ? messages.join(" ") : "Please check the submitted fields.",
+  });
 }
 
 // FR-LIST-01, FR-LIST-02, FR-AUTH-01: create a Lost or Found listing.
@@ -49,34 +126,54 @@ const createListing = async (req, res) => {
       });
     }
 
-    const {
-      type,
-      title,
-      category,
-      brand,
-      color,
-      description,
-      date,
-      building,
-      zone,
-      privateDetails,
-    } = req.body;
+    const body = req.body || {};
+    const imageNames = filesToImageNames(req);
 
-    const images = filesToImageUrls(req);
+    const candidate = {
+      type: body.type,
+      title: body.title,
+      category: body.category,
+      brand: body.brand,
+      color: body.color,
+      description: body.description,
+      date: toDate(body.date),
+      building: body.building,
+      zone: body.zone,
+      privateDetails: body.privateDetails,
+      images: imageNames,
+    };
 
-    const listing = await Listing.create({
-      type,
-      title,
-      category,
-      brand,
-      color,
-      description,
-      date,
-      location: { building, zone },
-      images,
-      privateDetails,
-      createdBy: req.user._id,
-    });
+    const messages = validateListing(candidate);
+
+    if (messages.length > 0) {
+      return validationFailure(res, messages);
+    }
+
+    const images = await storeListingImages(req);
+    let listing;
+
+    try {
+      listing = await listings.create(
+        {
+          type: candidate.type,
+          title: candidate.title,
+          category: candidate.category,
+          brand: candidate.brand,
+          color: candidate.color,
+          description: candidate.description,
+          date: candidate.date,
+          location: { building: candidate.building, zone: candidate.zone },
+          images,
+          privateDetails: candidate.privateDetails,
+          createdBy: req.user._id,
+        },
+        null,
+        { includePrivate: true }
+      );
+    } catch (error) {
+      await removeListingImages(images);
+      throw error;
+    }
 
     // FR-MATCH-01: matching runs in the background and never blocks creation.
     scheduleMatchRefresh(listing);
@@ -89,7 +186,7 @@ const createListing = async (req, res) => {
     logError("Unable to create listing", error);
 
     return res.status(400).json({
-      message: validationMessage(error),
+      message: "Please check the submitted fields.",
     });
   }
 };
@@ -97,22 +194,32 @@ const createListing = async (req, res) => {
 // FR-SRCH-01, FR-SRCH-02: public browse, search, and filter, paginated at 20 per page.
 const getListings = async (req, res) => {
   try {
-    const {
-      search,
-      type,
-      category,
-      brand,
-      color,
-      building,
-      zone,
-      startDate,
-      endDate,
-      page = 1,
-      limit = 20,
-    } = req.query;
+    const parsed = {};
 
-    const start = parseSearchDate(startDate, "Start date");
-    const end = parseSearchDate(endDate, "End date");
+    for (const name of [
+      "search",
+      "type",
+      "category",
+      "brand",
+      "color",
+      "building",
+      "zone",
+      "startDate",
+      "endDate",
+    ]) {
+      const result = queryString(req.query[name]);
+
+      if (result.error) {
+        return res.status(400).json({
+          message: `Query parameter ${name} must be a single text value.`,
+        });
+      }
+
+      parsed[name] = result.value;
+    }
+
+    const start = parseSearchDate(parsed.startDate, "Start date");
+    const end = parseSearchDate(parsed.endDate, "End date");
 
     if (start.error || end.error) {
       return res.status(400).json({
@@ -126,90 +233,44 @@ const getListings = async (req, res) => {
       });
     }
 
-    const query = {
-      isDeleted: false,
-      isHidden: { $ne: true },
-      status: "active",
+    if (parsed.type && !["lost", "found"].includes(parsed.type)) {
+      return res.status(400).json({
+        message: "Type must be either lost or found.",
+      });
+    }
+
+    const filters = {
+      type: parsed.type,
+      category: parsed.category,
+      brand: parsed.brand,
+      color: parsed.color,
+      building: parsed.building,
+      zone: parsed.zone,
+      startDate: start.date,
+      endDate: end.date,
+      search: parsed.search.trim(),
     };
 
-    if (type) {
-      if (!["lost", "found"].includes(type)) {
-        return res.status(400).json({
-          message: "Type must be either lost or found.",
-        });
-      }
-
-      query.type = type;
-    }
-
-    if (category) {
-      query.category = { $regex: new RegExp(`^${escapeRegExp(category)}$`, "i") };
-    }
-
-    if (brand) {
-      query.brand = { $regex: new RegExp(`^${escapeRegExp(brand)}$`, "i") };
-    }
-
-    if (color) {
-      query.color = { $regex: new RegExp(`^${escapeRegExp(color)}$`, "i") };
-    }
-
-    if (building) {
-      query["location.building"] = {
-        $regex: new RegExp(`^${escapeRegExp(building)}$`, "i"),
-      };
-    }
-
-    if (zone) {
-      query["location.zone"] = {
-        $regex: new RegExp(`^${escapeRegExp(zone)}$`, "i"),
-      };
-    }
-
-    if (start.date || end.date) {
-      query.date = {};
-
-      if (start.date) {
-        query.date.$gte = start.date;
-      }
-
-      if (end.date) {
-        query.date.$lte = end.date;
-      }
-    }
-
-    if (search && String(search).trim()) {
-      const term = escapeRegExp(String(search).trim());
-
-      query.$or = [
-        { title: { $regex: term, $options: "i" } },
-        { description: { $regex: term, $options: "i" } },
-        { category: { $regex: term, $options: "i" } },
-        { brand: { $regex: term, $options: "i" } },
-        { color: { $regex: term, $options: "i" } },
-      ];
-    }
-
-    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const pageNumber = Math.min(
+      Math.max(parseInt(isString(req.query.page) ? req.query.page : "1", 10) || 1, 1),
+      MAX_PAGE_NUMBER
+    );
     const pageSize = Math.min(
-      Math.max(parseInt(limit, 10) || MAX_PAGE_SIZE, 1),
+      Math.max(parseInt(isString(req.query.limit) ? req.query.limit : "20", 10) || MAX_PAGE_SIZE, 1),
       MAX_PAGE_SIZE
     );
 
-    const total = await Listing.countDocuments(query);
-
-    const listings = await Listing.find(query)
-      .populate("createdBy", "firstName lastName")
-      .sort({ createdAt: -1 })
-      .skip((pageNumber - 1) * pageSize)
-      .limit(pageSize);
+    const { total, listings: rows } = await listings.search(filters, {
+      page: pageNumber,
+      pageSize,
+    });
 
     return res.status(200).json({
       total,
       page: pageNumber,
       limit: pageSize,
       totalPages: Math.ceil(total / pageSize),
-      listings,
+      listings: rows,
     });
   } catch (error) {
     logError("Unable to retrieve listings", error);
@@ -225,33 +286,40 @@ const getListings = async (req, res) => {
 // listing's own owner, consistent with FR-LIST-04 and NFR-PRIV-01.
 const getListingById = async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id)
-      .select("+privateDetails")
-      .populate("createdBy", "firstName lastName");
+    if (!isGuid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid listing id." });
+    }
 
-    const isOwner =
-      req.user && listing.createdBy?._id.toString() === req.user._id.toString();
+    const listing = await listings.findById(req.params.id, {
+      includePrivate: true,
+      populateCreator: true,
+    });
 
-    // FR-ADM-01: hidden listings leave public views. The owner may still see
-    // their own listing; everyone else gets a not-found response.
-    if (!listing || listing.isDeleted || (listing.isHidden && !isOwner)) {
+    // The listing is checked for null before anything on it is read.
+    if (!listing) {
       return res.status(404).json({
         message: "Listing not found.",
       });
     }
 
-    const responseListing = listing.toObject();
+    const isOwner = Boolean(
+      req.user && listing.createdBy && listing.createdBy._id === req.user._id
+    );
+
+    // FR-ADM-01: hidden listings leave public views. The owner may still see
+    // their own listing; everyone else gets a not-found response.
+    if (listing.isDeleted || (listing.isHidden && !isOwner)) {
+      return res.status(404).json({
+        message: "Listing not found.",
+      });
+    }
 
     if (!isOwner) {
-      delete responseListing.privateDetails;
+      delete listing.privateDetails;
     }
 
-    return res.status(200).json({ listing: responseListing });
+    return res.status(200).json({ listing });
   } catch (error) {
-    if (error.name === "CastError") {
-      return res.status(400).json({ message: "Invalid listing id." });
-    }
-
     logError("Unable to retrieve listing", error);
 
     return res.status(500).json({
@@ -263,7 +331,11 @@ const getListingById = async (req, res) => {
 // FR-LIST-03: only the owner may edit their own Active listing.
 const updateListing = async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id).select("+privateDetails");
+    if (!isGuid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid listing id." });
+    }
+
+    const listing = await listings.findById(req.params.id, { includePrivate: true });
 
     if (!listing || listing.isDeleted) {
       return res.status(404).json({
@@ -271,7 +343,7 @@ const updateListing = async (req, res) => {
       });
     }
 
-    if (listing.createdBy.toString() !== req.user._id.toString()) {
+    if (listing.createdBy !== req.user._id) {
       return res.status(403).json({
         message: "You can only edit your own listings.",
       });
@@ -283,48 +355,84 @@ const updateListing = async (req, res) => {
       });
     }
 
-    const allowedFields = [
-      "title",
-      "category",
-      "brand",
-      "color",
-      "description",
-      "date",
-      "privateDetails",
-    ];
+    const body = req.body || {};
+    const changes = {};
 
-    allowedFields.forEach((field) => {
-      if (req.body[field] !== undefined) {
-        listing[field] = req.body[field];
+    for (const field of ["title", "category", "brand", "color", "description", "privateDetails"]) {
+      if (body[field] !== undefined) {
+        changes[field] = body[field];
       }
-    });
-
-    if (req.body.building !== undefined || req.body.zone !== undefined) {
-      listing.location = {
-        building: req.body.building ?? listing.location?.building,
-        zone: req.body.zone ?? listing.location?.zone,
-      };
     }
 
-    const newImages = filesToImageUrls(req);
-    if (newImages.length > 0) {
-      listing.images = newImages;
+    if (body.date !== undefined) {
+      changes.date = toDate(body.date);
     }
 
-    await listing.save();
+    if (body.building !== undefined || body.zone !== undefined) {
+      changes.building = body.building ?? listing.location?.building;
+      changes.zone = body.zone ?? listing.location?.zone;
+    }
+
+    const newImageNames = filesToImageNames(req);
+
+    if (newImageNames.length > 0) {
+      changes.images = newImageNames;
+    }
+
+    const merged = {
+      type: listing.type,
+      title: listing.title,
+      category: listing.category,
+      brand: listing.brand,
+      color: listing.color,
+      description: listing.description,
+      date: listing.date,
+      building: listing.location?.building,
+      zone: listing.location?.zone,
+      privateDetails: listing.privateDetails,
+      images: listing.images,
+      ...changes,
+    };
+
+    const messages = validateListing(merged);
+
+    if (messages.length > 0) {
+      return validationFailure(res, messages);
+    }
+
+    let storedImages = [];
+
+    if (newImageNames.length > 0) {
+      storedImages = await storeListingImages(req);
+    }
+
+    let updated;
+
+    try {
+      updated = await listings.update(listing._id, changes, { includePrivate: true });
+    } catch (error) {
+      await removeListingImages(storedImages);
+      throw error;
+    }
+
+    if (storedImages.length > 0) {
+      // The replaced photos are no longer referenced; drop them from storage.
+      const replaced = (listing.images || []).map((url) => String(url).split("/").pop());
+      await removeListingImages(replaced);
+    }
 
     // FR-MATCH-02: suggestions are recomputed after every edit, in the background.
-    scheduleMatchRefresh(listing);
+    scheduleMatchRefresh(updated);
 
     return res.status(200).json({
       message: "Listing updated successfully.",
-      listing,
+      listing: updated,
     });
   } catch (error) {
     logError("Unable to update listing", error);
 
     return res.status(400).json({
-      message: validationMessage(error),
+      message: "Please check the submitted fields.",
     });
   }
 };
@@ -332,7 +440,11 @@ const updateListing = async (req, res) => {
 // FR-LIST-03: soft delete, preserving the record rather than removing it.
 const deleteListing = async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id);
+    if (!isGuid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid listing id." });
+    }
+
+    const listing = await listings.findById(req.params.id);
 
     if (!listing || listing.isDeleted) {
       return res.status(404).json({
@@ -340,7 +452,7 @@ const deleteListing = async (req, res) => {
       });
     }
 
-    if (listing.createdBy.toString() !== req.user._id.toString()) {
+    if (listing.createdBy !== req.user._id) {
       return res.status(403).json({
         message: "You can only delete your own listings.",
       });
@@ -352,8 +464,7 @@ const deleteListing = async (req, res) => {
       });
     }
 
-    listing.isDeleted = true;
-    await listing.save();
+    await listings.softDelete(listing._id);
 
     await removeMatchesForListing(listing._id).catch((error) => {
       logError("Unable to remove matches after listing deletion", error);

@@ -148,7 +148,7 @@ function ClaimReview() {
       <p className="hint">Submitted {formatDateTime(claim.createdAt)}</p>
 
       {message && (
-        <p role="status" className="notice">
+        <p role="status" className="flash flash-info">
           {message}
         </p>
       )}
@@ -160,7 +160,7 @@ function ClaimReview() {
       )}
 
       <div className="two-column">
-        <section aria-labelledby="evidence-heading" className="listing-card">
+        <section aria-labelledby="evidence-heading" className="card">
           <h2 id="evidence-heading">Claimant evidence</h2>
           {isOwnerView && (
             <p>
@@ -185,7 +185,7 @@ function ClaimReview() {
       </div>
 
       {canDecide && (
-        <form onSubmit={handleDecision} className="stack-form" aria-labelledby="decision-heading">
+        <form onSubmit={handleDecision} className="stack-form card" aria-labelledby="decision-heading">
           <h2 id="decision-heading">Decision</h2>
           <fieldset className="radio-group">
             <legend>Choose an outcome</legend>
@@ -222,8 +222,12 @@ function ClaimReview() {
             />
           </div>
 
-          <button type="submit" disabled={busy}>
-            {busy ? "Saving..." : "Save decision"}
+          <button
+            type="submit"
+            className={decision === "reject" ? "danger" : "primary"}
+            disabled={busy}
+          >
+            {busy ? "Saving..." : decision === "reject" ? "Reject claim" : "Approve claim"}
           </button>
         </form>
       )}

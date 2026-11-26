@@ -28,7 +28,7 @@ function App() {
     <BrowserRouter>
       <Navbar />
 
-      <main className="page-container">
+      <main className="page-container" id="main">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
@@ -123,6 +123,10 @@ function App() {
           />
         </Routes>
       </main>
+
+      <footer className="site-footer">
+        <p>Campus Lost &amp; Found. A CSCE 5430 Software Engineering project, Team Falcons, University of North Texas.</p>
+      </footer>
     </BrowserRouter>
   );
 }

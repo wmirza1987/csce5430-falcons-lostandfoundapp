@@ -213,7 +213,7 @@ function Messaging() {
         <Link to="/messages">All message threads</Link>
       </p>
       <h1>{thread.listingTitle}</h1>
-      <p className="hint">
+      <p className="flash flash-info">
         You are the <strong>{thread.yourRole}</strong>. Contact details are not shown here; arrange the handoff inside the app.
       </p>
 
@@ -279,7 +279,7 @@ function Messaging() {
       </ol>
 
       {canWrite ? (
-        <form onSubmit={handleSend} className="stack-form" aria-labelledby="compose-heading">
+        <form onSubmit={handleSend} className="stack-form card" aria-labelledby="compose-heading">
           <h2 id="compose-heading">Send a message</h2>
           <div className="form-field">
             <label htmlFor="message-body">Message</label>
@@ -295,7 +295,7 @@ function Messaging() {
               {draft.length} of {MAX_MESSAGE} characters
             </p>
           </div>
-          <button type="submit" disabled={busy}>
+          <button type="submit" className="primary" disabled={busy}>
             {busy ? "Sending..." : "Send"}
           </button>
         </form>

@@ -1,15 +1,27 @@
 const jwt = require("jsonwebtoken");
-const Listing = require("../models/Listing");
-const Match = require("../models/Match");
-const User = require("../models/User");
+const listingsRepo = require("../repos/listings");
+const matchesRepo = require("../repos/matches");
+const usersRepo = require("../repos/users");
 const { calculateMatchDetails } = require("../services/matchingService");
+
+// Minimal buffers that start with the real magic bytes of each image type.
+const PNG_BYTES = Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  Buffer.from("fake-png-body"),
+]);
+const JPEG_BYTES = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from("fake-jpeg-body")]);
+const WEBP_BYTES = Buffer.concat([
+  Buffer.from("RIFF"),
+  Buffer.from([0x10, 0, 0, 0]),
+  Buffer.from("WEBPfake"),
+]);
 
 let sequence = 0;
 
 async function createUser(overrides = {}) {
   sequence += 1;
 
-  return User.create({
+  return usersRepo.create({
     firstName: overrides.firstName || "Test",
     lastName: overrides.lastName || "User",
     email: overrides.email || `test-user-${Date.now()}-${sequence}@my.unt.edu`,
@@ -33,33 +45,37 @@ function authHeader(user) {
 async function createListing(owner, overrides = {}) {
   const type = overrides.type || "lost";
 
-  return Listing.create({
-    type,
-    title: overrides.title || "Black AirPods",
-    category: overrides.category || "Electronics",
-    brand: overrides.brand || "Apple",
-    color: overrides.color || "Black",
-    description: overrides.description || "Lost black AirPods near Willis Library",
-    date: overrides.date || new Date("2026-10-01"),
-    location: overrides.location || {
-      building: "Willis Library",
-      zone: "North Campus",
+  return listingsRepo.create(
+    {
+      type,
+      title: overrides.title || "Black AirPods",
+      category: overrides.category || "Electronics",
+      brand: overrides.brand || "Apple",
+      color: overrides.color || "Black",
+      description: overrides.description || "Lost black AirPods near Willis Library",
+      date: overrides.date || new Date("2026-10-01"),
+      location: overrides.location || {
+        building: "Willis Library",
+        zone: "North Campus",
+      },
+      images:
+        overrides.images ||
+        (type === "found" ? ["11111111-1111-4111-8111-111111111111.jpg"] : []),
+      privateDetails: overrides.privateDetails,
+      createdBy: owner._id,
+      status: overrides.status || "active",
+      isDeleted: overrides.isDeleted || false,
     },
-    images:
-      overrides.images ||
-      (type === "found" ? ["/uploads/listings/test-found.jpg"] : []),
-    privateDetails: overrides.privateDetails,
-    createdBy: owner._id,
-    status: overrides.status || "active",
-    isDeleted: overrides.isDeleted || false,
-  });
+    null,
+    { includePrivate: true }
+  );
 }
 
 // Persists a match using the same scoring code the engine uses.
 async function createMatch(lostListing, foundListing) {
   const details = calculateMatchDetails(lostListing, foundListing);
 
-  return Match.create({
+  return matchesRepo.create({
     lostListing: lostListing._id,
     foundListing: foundListing._id,
     score: details.score,
@@ -91,6 +107,9 @@ async function createMatchedPair({ finder, claimant } = {}) {
 }
 
 module.exports = {
+  JPEG_BYTES,
+  PNG_BYTES,
+  WEBP_BYTES,
   authHeader,
   createListing,
   createMatch,

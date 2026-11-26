@@ -1,3 +1,4 @@
+const fs = require("fs");
 const path = require("path");
 const express = require("express");
 const cors = require("cors");
@@ -11,8 +12,13 @@ const messageRoutes = require("./routes/messageRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const mapRoutes = require("./routes/mapRoutes");
+const imageRoutes = require("./routes/imageRoutes");
 
 const app = express();
+
+// App Service (and most hosts) sit behind a proxy; trust the first hop so
+// req.ip and the rate limiter see the real client address.
+app.set("trust proxy", 1);
 
 const allowedOrigins = (process.env.CLIENT_ORIGIN || "http://localhost:5173")
   .split(",")
@@ -34,9 +40,6 @@ app.use(
 
 app.use(express.json({ limit: "1mb" }));
 
-// Serves uploaded listing images (see middleware/uploadMiddleware.js).
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
 const apiRouter = express.Router();
 
 apiRouter.use("/auth", authRoutes);
@@ -48,6 +51,7 @@ apiRouter.use(notificationRoutes);
 apiRouter.use(reportRoutes);
 apiRouter.use(adminRoutes);
 apiRouter.use(mapRoutes);
+apiRouter.use(imageRoutes);
 
 // Versioned API (IF-SW-01); the unversioned mount is kept as a compatibility
 // alias for existing clients and tests.
@@ -63,6 +67,16 @@ function healthCheck(req, res) {
 
 app.get("/api/health", healthCheck);
 app.get("/api/v1/health", healthCheck);
+
+// Production: the API also serves the built React client (same origin, no CORS).
+const clientDir = path.join(__dirname, "public");
+
+if (fs.existsSync(path.join(clientDir, "index.html"))) {
+  app.use(express.static(clientDir, { index: false, maxAge: "1h" }));
+  app.get(/^\/(?!api(\/|$)).*/, (req, res) => {
+    res.sendFile(path.join(clientDir, "index.html"));
+  });
+}
 
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found." });

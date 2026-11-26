@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiUrl, API_BASE_URL } from "../config/api";
+import { formatDate } from "../config/http";
 
 function Listings() {
   const navigate = useNavigate();
@@ -149,251 +150,222 @@ function Listings() {
   };
 
   return (
-    <div>
-      <h1>Listings</h1>
+    <div className="listings-layout">
+      <aside className="filters" aria-label="Listing filters">
+        <h1 className="filters-title">Filters</h1>
 
-      <form onSubmit={handleSearch}>
-        <div>
-          <label htmlFor="search-text">Search</label>
-          <br />
-          <input
-            id="search-text"
-            type="text"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search listings"
-          />
+        <form onSubmit={handleSearch} className="filter-form">
+
+          <div className="form-field">
+            <label htmlFor="search-text">Keyword</label>
+            <input
+              id="search-text"
+              type="text"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search keyword..."
+            />
+          </div>
+
+          <fieldset className="radio-group">
+            <legend>Type</legend>
+            <label>
+              <input type="radio" name="search-type" value="" checked={type === ""} onChange={() => setType("")} />
+              All
+            </label>
+            <label>
+              <input type="radio" name="search-type" value="lost" checked={type === "lost"} onChange={() => setType("lost")} />
+              Lost
+            </label>
+            <label>
+              <input type="radio" name="search-type" value="found" checked={type === "found"} onChange={() => setType("found")} />
+              Found
+            </label>
+          </fieldset>
+
+          <div className="form-field">
+            <label htmlFor="search-category">Category</label>
+            <input
+              id="search-category"
+              type="text"
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              placeholder="Example: Bags"
+            />
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="search-brand">Brand</label>
+            <input
+              id="search-brand"
+              type="text"
+              value={brand}
+              onChange={(event) => setBrand(event.target.value)}
+              placeholder="Example: Apple"
+            />
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="search-color">Color</label>
+            <input
+              id="search-color"
+              type="text"
+              value={color}
+              onChange={(event) => setColor(event.target.value)}
+              placeholder="Example: Black"
+            />
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="search-building">Building</label>
+            <input
+              id="search-building"
+              type="text"
+              value={building}
+              onChange={(event) => setBuilding(event.target.value)}
+              placeholder="Example: Willis Library"
+            />
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="search-zone">Zone</label>
+            <input
+              id="search-zone"
+              type="text"
+              value={zone}
+              onChange={(event) => setZone(event.target.value)}
+              placeholder="Example: North Campus"
+            />
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="search-start-date">Date From</label>
+            <input
+              id="search-start-date"
+              type="date"
+              value={startDate}
+              onChange={(event) => setStartDate(event.target.value)}
+              
+            />
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="search-end-date">Date To</label>
+            <input
+              id="search-end-date"
+              type="date"
+              value={endDate}
+              onChange={(event) => setEndDate(event.target.value)}
+              
+            />
+          </div>
+
+          <div className="filter-actions">
+            <button type="submit" className="primary">Search</button>
+            <button type="button" className="outline" onClick={handleClear}>
+              Clear Filters
+            </button>
+          </div>
+        </form>
+      </aside>
+
+      <section className="listings-results" aria-label="Listings">
+        {message && <p role="alert" className="flash flash-info">{message}</p>}
+
+        {listings.length === 0 && !message && (
+          <p className="empty">No active listings found.</p>
+        )}
+
+        <div className="listing-grid">
+          {listings.map((listing) => {
+            const isOwner =
+              currentUser && listing.createdBy?._id === currentUser.id;
+            const firstImage = listing.images && listing.images[0];
+
+            return (
+              <article key={listing._id} className="listing-tile">
+                <div className="tile-body">
+                  <div className="tile-thumb">
+                    {firstImage ? (
+                      <img
+                        src={`${API_BASE_URL}${firstImage}`}
+                        alt={`${listing.title} photo`}
+                      />
+                    ) : (
+                      <span aria-hidden="true">No photo</span>
+                    )}
+                  </div>
+                  <div className="tile-info">
+                    <div className="tile-head">
+                      <h2>
+                        <Link to={`/listings/${listing._id}`}>{listing.title}</Link>
+                      </h2>
+                      <span
+                        className={`type-badge type-${listing.type === "found" ? "found" : "lost"}`}
+                      >
+                        {String(listing.type || "").toUpperCase()}
+                      </span>
+                    </div>
+                    <p className="tile-meta">
+                      {listing.location?.building || "Not specified"}
+                    </p>
+                    <p className="tile-meta">{formatDate(listing.date)}</p>
+                    <p className="tile-meta">
+                      {listing.category}
+                      {listing.brand ? `, ${listing.brand}` : ""}
+                      {listing.color ? `, ${listing.color}` : ""}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="tile-footer">
+                  <Link to={`/listings/${listing._id}`}>View Details</Link>
+                  {isOwner && (
+                    <span className="tile-owner-actions">
+                      <button
+                        type="button"
+                        className="link-btn"
+                        onClick={() => navigate(`/listings/${listing._id}/edit`)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="link-btn danger"
+                        onClick={() => handleDelete(listing._id)}
+                      >
+                        Delete
+                      </button>
+                    </span>
+                  )}
+                </div>
+              </article>
+            );
+          })}
         </div>
 
-        <br />
-
-        <div>
-          <label htmlFor="search-type">Type</label>
-          <br />
-          <select
-            id="search-type"
-            value={type}
-            onChange={(event) => setType(event.target.value)}
+        <nav className="pagination" aria-label="Pagination">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => setPage(page - 1)}
           >
-            <option value="">All</option>
-            <option value="lost">Lost</option>
-            <option value="found">Found</option>
-          </select>
-        </div>
+            Previous
+          </button>
 
-        <br />
+          <span className="page-status">
+            Page {page} of {totalPages}
+          </span>
 
-        <div>
-          <label htmlFor="search-category">Category</label>
-          <br />
-          <input
-            id="search-category"
-            type="text"
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
-            placeholder="Example: Bags"
-          />
-        </div>
-
-        <br />
-
-        <div>
-          <label htmlFor="search-brand">Brand</label>
-          <br />
-          <input
-            id="search-brand"
-            type="text"
-            value={brand}
-            onChange={(event) => setBrand(event.target.value)}
-            placeholder="Example: Apple"
-          />
-        </div>
-
-        <br />
-
-        <div>
-          <label htmlFor="search-color">Color</label>
-          <br />
-          <input
-            id="search-color"
-            type="text"
-            value={color}
-            onChange={(event) => setColor(event.target.value)}
-            placeholder="Example: Black"
-          />
-        </div>
-
-        <br />
-
-        <div>
-          <label htmlFor="search-building">Building</label>
-          <br />
-          <input
-            id="search-building"
-            type="text"
-            value={building}
-            onChange={(event) => setBuilding(event.target.value)}
-            placeholder="Example: Willis Library"
-          />
-        </div>
-
-        <br />
-
-        <div>
-          <label htmlFor="search-zone">Zone</label>
-          <br />
-          <input
-            id="search-zone"
-            type="text"
-            value={zone}
-            onChange={(event) => setZone(event.target.value)}
-            placeholder="Example: North Campus"
-          />
-        </div>
-
-        <br />
-
-        <div>
-          <label htmlFor="search-start-date">Date From</label>
-          <br />
-          <input
-            id="search-start-date"
-            type="date"
-            value={startDate}
-            onChange={(event) => setStartDate(event.target.value)}
-          />
-        </div>
-
-        <br />
-
-        <div>
-          <label htmlFor="search-end-date">Date To</label>
-          <br />
-          <input
-            id="search-end-date"
-            type="date"
-            value={endDate}
-            onChange={(event) => setEndDate(event.target.value)}
-          />
-        </div>
-
-        <br />
-
-        <button type="submit">Search</button>{" "}
-        <button type="button" onClick={handleClear}>
-          Clear
-        </button>
-      </form>
-
-      <hr />
-
-      {message && <p role="alert">{message}</p>}
-
-      {listings.length === 0 && !message && (
-        <p>No active listings found.</p>
-      )}
-
-      {listings.map((listing) => (
-        <div key={listing._id} className="listing-card">
-          <h2>
-            <Link to={`/listings/${listing._id}`}>{listing.title}</Link>
-          </h2>
-
-          {listing.images && listing.images.length > 0 && (
-            <div className="listing-images">
-              {listing.images.map((imagePath) => (
-                <img
-                  key={imagePath}
-                  src={`${API_BASE_URL}${imagePath}`}
-                  alt={`${listing.title} photo`}
-                  className="listing-thumbnail"
-                />
-              ))}
-            </div>
-          )}
-
-          <p>
-            <strong>Type:</strong> {listing.type}
-          </p>
-
-          <p>
-            <strong>Category:</strong> {listing.category}
-          </p>
-
-          {listing.brand && (
-            <p>
-              <strong>Brand:</strong> {listing.brand}
-            </p>
-          )}
-
-          {listing.color && (
-            <p>
-              <strong>Color:</strong> {listing.color}
-            </p>
-          )}
-
-          <p>
-            <strong>Description:</strong> {listing.description}
-          </p>
-
-          <p>
-            <strong>Location:</strong>{" "}
-            {listing.location?.building || "Not specified"}
-          </p>
-
-          <p>
-            <Link to={`/listings/${listing._id}`}>View details and claims</Link>
-          </p>
-
-          {currentUser &&
-            listing.createdBy?._id === currentUser.id && (
-              <div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate(`/listings/${listing._id}/edit`)
-                  }
-                >
-                  Edit
-                </button>
-
-                {" "}
-
-                <button
-                  type="button"
-                  onClick={() => handleDelete(listing._id)}
-                >
-                  Delete
-                </button>
-              </div>
-            )}
-
-          <hr />
-        </div>
-      ))}
-
-      <div className="pagination">
-        <button
-          type="button"
-          disabled={page <= 1}
-          onClick={() => setPage(page - 1)}
-        >
-          Previous
-        </button>
-
-        <span>
-          {" "}
-          Page {page} of {totalPages}{" "}
-        </span>
-
-        <button
-          type="button"
-          disabled={page >= totalPages}
-          onClick={() => setPage(page + 1)}
-        >
-          Next
-        </button>
-      </div>
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => setPage(page + 1)}
+          >
+            Next
+          </button>
+        </nav>
+      </section>
     </div>
   );
 }

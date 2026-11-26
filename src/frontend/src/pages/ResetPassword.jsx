@@ -44,11 +44,12 @@ function ResetPassword() {
   };
 
   return (
-    <div>
+    <div className="auth-wrap">
+      <div className="card auth-card">
       <h1>Reset Password</h1>
 
-      <form onSubmit={handleSubmit} noValidate>
-        <div>
+      <form onSubmit={handleSubmit} noValidate className="plain-form">
+        <div className="form-field">
           <label htmlFor="reset-password">New Password</label>
           <br />
           <input
@@ -69,7 +70,7 @@ function ResetPassword() {
 
         <br />
 
-        <div>
+        <div className="form-field">
           <label htmlFor="reset-confirm-password">Confirm New Password</label>
           <br />
           <input
@@ -90,7 +91,7 @@ function ResetPassword() {
 
         <br />
 
-        <button type="submit">Reset Password</button>
+        <button type="submit" className="primary block">Reset Password</button>
       </form>
 
       {formMessage && (
@@ -99,9 +100,10 @@ function ResetPassword() {
         </p>
       )}
 
-      <p>
+      <p className="auth-alt">
         <Link to="/login">Back to login</Link>
       </p>
+      </div>
     </div>
   );
 }

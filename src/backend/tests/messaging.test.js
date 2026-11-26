@@ -1,7 +1,7 @@
 const request = require("supertest");
 const app = require("../app");
-const Message = require("../models/Message");
-const Notification = require("../models/Notification");
+const messagesRepo = require("../repos/messages");
+const notificationsRepo = require("../repos/notifications");
 const { authHeader, createListing, createMatch, createMatchedPair, createUser } = require("./helpers");
 
 async function approvedThread() {
@@ -88,14 +88,14 @@ describe("Thread lifecycle (FR-CLM-03, FR-COM-01)", () => {
 
   test("UT-MSG-15 and INT-21: a message that cannot be stored is not reported as sent", async () => {
     const { claimant, claimId } = await approvedThread();
-    const before = await Message.countDocuments({ claim: claimId });
-    const spy = jest.spyOn(Message, "create").mockRejectedValueOnce(new Error("database unavailable"));
+    const before = await messagesRepo.countForClaim(claimId);
+    const spy = jest.spyOn(messagesRepo, "create").mockRejectedValueOnce(new Error("database unavailable"));
 
     const response = await sendMessage(claimant, claimId, "This should not be stored");
     spy.mockRestore();
 
     expect(response.statusCode).toBe(500);
-    expect(await Message.countDocuments({ claim: claimId })).toBe(before);
+    expect(await messagesRepo.countForClaim(claimId)).toBe(before);
   });
 });
 
@@ -113,12 +113,12 @@ describe("Access control (FR-COM-02, FR-AUTH-03)", () => {
   test("UT-MSG-05 and UT-AUTH-03: a third party cannot send, and nothing is stored", async () => {
     const { claimId } = await approvedThread();
     const stranger = await createUser();
-    const before = await Message.countDocuments({ claim: claimId });
+    const before = await messagesRepo.countForClaim(claimId);
 
     const response = await sendMessage(stranger, claimId, "Intrusion");
 
     expect(response.statusCode).toBe(403);
-    expect(await Message.countDocuments({ claim: claimId })).toBe(before);
+    expect(await messagesRepo.countForClaim(claimId)).toBe(before);
   });
 
   test("UT-MSG-08: threads are listed only to their participants", async () => {
@@ -235,7 +235,7 @@ describe("Message content rules (FR-COM-01, FR-COM-03)", () => {
     await sendMessage(claimant, claimId, "SECRET-HANDOFF-TIME");
 
     const publicListing = await request(app).get(`/api/v1/listings/${found._id}`);
-    const notices = await Notification.find({ type: "message" }).lean();
+    const notices = await notificationsRepo.listByType("message");
 
     expect(publicListing.text).not.toContain("SECRET-HANDOFF-TIME");
     expect(notices.length).toBeGreaterThan(0);
@@ -246,15 +246,16 @@ describe("Message content rules (FR-COM-01, FR-COM-03)", () => {
 
   test("pages hold 50 messages, newest page first", async () => {
     const { claimant, claimId } = await approvedThread();
-    const { listing } = await Message.findOne({ claim: claimId }).lean();
-    const inserts = Array.from({ length: 55 }, (_, index) => ({
-      claim: claimId,
-      listing,
-      sender: claimant._id,
-      kind: "user",
-      body: `Message ${index + 1}`,
-    }));
-    await Message.insertMany(inserts);
+    const { listing } = await messagesRepo.findFirstForClaim(claimId);
+    for (let index = 0; index < 55; index += 1) {
+      await messagesRepo.create({
+        claim: claimId,
+        listing,
+        sender: claimant._id,
+        kind: "user",
+        body: `Message ${index + 1}`,
+      });
+    }
 
     const pageOne = await readThread(claimant, claimId, 1);
     const pageTwo = await readThread(claimant, claimId, 2);
@@ -290,7 +291,7 @@ describe("Moderation (FR-COM-02)", () => {
     expect(response.statusCode).toBe(200);
     expect(response.body.flagged.flagged).toBe(true);
 
-    const notices = await Notification.find({ type: "moderation" }).lean();
+    const notices = await notificationsRepo.listByType("moderation");
     const reviewed = notices.filter((notice) => notice.message.includes("was reviewed by moderation"));
     const recipients = reviewed.map((notice) => String(notice.user)).sort();
     expect(recipients).toEqual([String(claimant._id), String(finder._id)].sort());

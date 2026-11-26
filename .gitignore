@@ -3,10 +3,12 @@ node_modules/
 .env
 **/.env
 !.env.example
-**/.env.example
-uploads/
-**/uploads/listings/
-# Runtime-generated encrypted claim evidence (recreated by evidenceCrypto.js).
+!**/.env.example
+# Local fallback blob storage (services/storage.js)
+.local-storage/
+**/.local-storage/
+# Legacy disk folders from before the Blob Storage migration
+src/backend/uploads/
 src/backend/private/
 *.log
 .DS_Store
@@ -19,3 +21,4 @@ src/backend/private/
 
 # encrypted claim evidence (NFR-PRIV) - never commit
 **/private/
+public/
