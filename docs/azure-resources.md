@@ -12,6 +12,8 @@ creation was refused in the three US regions at the time of setup.
 | Storage account | `lfcampuss2iv1` | Shared key access disabled, no public blobs |
 | Blob containers | `listing-photos`, `claim-evidence` | Both private |
 | Key Vault | `lfcampus-kv-s2iv1` | RBAC authorization; holds `jwt-secret` and `evidence-encryption-key` |
+| Application Insights | `lfcampus-insights` | Telemetry via `@azure/monitor-opentelemetry`; enabled by the `APPLICATIONINSIGHTS_CONNECTION_STRING` app setting |
+| Azure Maps | `lfcampus-maps` (Gen2, global) | Tiles proxied by `/api/v1/map/tiles/{z}/{x}/{y}.png` using the app identity (Azure Maps Data Reader); `AZURE_MAPS_CLIENT_ID` app setting; local keys disabled |
 
 No secret values are stored in this repository. Apply the schema with
 `node db/migrate.js` using `DB_AUTH=aad` (see `src/backend/.env.example`).
@@ -32,3 +34,13 @@ No secret values are stored in this repository. Apply the schema with
   and create a GitHub environment named `production`.
 - Zip packages must use forward-slash entry names (Windows `Compress-Archive` does not),
   and the remote build (`SCM_DO_BUILD_DURING_DEPLOYMENT=true`) runs `npm install`.
+
+## Optional integrations
+
+Both Application Insights and Azure Maps are opt-in. With their settings unset the app
+runs normally: no telemetry is sent and the campus map uses OpenStreetMap tiles.
+
+## CI
+
+`.github/workflows/deploy.yml` runs the backend tests against a disposable SQL Server
+container before building and deploying.
