@@ -165,15 +165,35 @@ function ClaimForm() {
     <div className="claim-form-page">
       <h1>Submit a claim</h1>
 
-      <section aria-labelledby="matched-item-heading" className="listing-card">
-        <h2 id="matched-item-heading">Matched found item</h2>
-        <p>
-          <strong>{listing.title}</strong> · {listing.category} · {listing.location?.building} ·{" "}
-          {formatDate(listing.date)}
-        </p>
-        <p>{listing.description}</p>
-        <p className="hint">Confidence {formatConfidence(match.score)} (0 to 1)</p>
-      </section>
+      <div className="two-column preview-pair">
+        {match.lostListing && (
+          <section aria-labelledby="lost-item-heading" className="card">
+            <h2 id="lost-item-heading">
+              Your lost item <span className="type-badge type-lost">LOST</span>
+            </h2>
+            <p>
+              <strong>{match.lostListing.title}</strong>
+            </p>
+            <p className="hint">
+              {match.lostListing.category} · {match.lostListing.location?.building} ·{" "}
+              {formatDate(match.lostListing.date)}
+            </p>
+            <p>{match.lostListing.description}</p>
+          </section>
+        )}
+
+        <section aria-labelledby="matched-item-heading" className="card">
+          <h2 id="matched-item-heading">
+            Matched found item <span className="type-badge type-found">FOUND</span>
+          </h2>
+          <p>
+            <strong>{listing.title}</strong> · {listing.category} · {listing.location?.building} ·{" "}
+            {formatDate(listing.date)}
+          </p>
+          <p>{listing.description}</p>
+          <p className="hint">Confidence {formatConfidence(match.score)} (0 to 1)</p>
+        </section>
+      </div>
 
       {formError && (
         <p role="alert" className="field-error">
@@ -232,13 +252,13 @@ function ClaimForm() {
           </div>
 
           <div className="action-row">
-            <button type="submit">Review claim</button>
+            <button type="submit" className="primary">Review claim</button>
           </div>
         </form>
       )}
 
       {previewing && (
-        <section aria-labelledby="preview-heading" className="listing-card">
+        <section aria-labelledby="preview-heading" className="card">
           <h2 id="preview-heading">Review before submitting</h2>
           <p>
             <strong>Evidence description</strong>
@@ -259,7 +279,7 @@ function ClaimForm() {
             <button type="button" onClick={() => setPreviewing(false)} disabled={busy}>
               Edit
             </button>{" "}
-            <button type="button" onClick={handleSubmit} disabled={busy}>
+            <button type="button" className="primary" onClick={handleSubmit} disabled={busy}>
               {busy ? "Submitting..." : "Submit claim"}
             </button>
           </div>
