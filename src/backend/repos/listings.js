@@ -76,7 +76,7 @@ function mapListing(row, options = {}) {
       row.zone === null || row.zone === undefined
         ? { building: row.building }
         : { building: row.building, zone: row.zone },
-    images: parseJson(row.imagesJson, []),
+    images: parseJson(row.imagesJson, []).map(imageUrl),
     status: row.status,
     createdBy: lowerId(row.createdBy),
     isDeleted: Boolean(row.isDeleted),
@@ -106,9 +106,21 @@ function mapListing(row, options = {}) {
   return listing;
 }
 
+// imagesJson stores blob names; API responses expose them as URLs.
+const IMAGE_URL_PREFIX = "/api/v1/images/";
+
+function imageUrl(name) {
+  return typeof name === "string" && !name.startsWith("/") ? `${IMAGE_URL_PREFIX}${name}` : name;
+}
+
+function imageName(value) {
+  return value.startsWith(IMAGE_URL_PREFIX) ? value.slice(IMAGE_URL_PREFIX.length) : value;
+}
+
 function cleanImages(images) {
   return (Array.isArray(images) ? images : [])
     .filter((image) => typeof image === "string")
+    .map(imageName)
     .slice(0, MAX_IMAGES);
 }
 

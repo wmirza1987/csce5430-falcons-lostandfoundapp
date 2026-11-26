@@ -4,9 +4,11 @@ node_modules/
 **/.env
 !.env.example
 !**/.env.example
-uploads/
-**/uploads/listings/
-# Runtime-generated encrypted claim evidence (recreated by evidenceCrypto.js).
+# Local fallback blob storage (services/storage.js)
+.local-storage/
+**/.local-storage/
+# Legacy disk folders from before the Blob Storage migration
+src/backend/uploads/
 src/backend/private/
 *.log
 .DS_Store

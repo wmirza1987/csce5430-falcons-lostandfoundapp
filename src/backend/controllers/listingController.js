@@ -1,5 +1,9 @@
 const listings = require("../repos/listings");
-const { filesToImageUrls } = require("../middleware/uploadMiddleware");
+const {
+  filesToImageNames,
+  removeListingImages,
+  storeListingImages,
+} = require("../middleware/uploadMiddleware");
 const {
   removeMatchesForListing,
   scheduleMatchRefresh,
@@ -123,7 +127,7 @@ const createListing = async (req, res) => {
     }
 
     const body = req.body || {};
-    const images = filesToImageUrls(req);
+    const imageNames = filesToImageNames(req);
 
     const candidate = {
       type: body.type,
@@ -136,7 +140,7 @@ const createListing = async (req, res) => {
       building: body.building,
       zone: body.zone,
       privateDetails: body.privateDetails,
-      images,
+      images: imageNames,
     };
 
     const messages = validateListing(candidate);
@@ -145,23 +149,31 @@ const createListing = async (req, res) => {
       return validationFailure(res, messages);
     }
 
-    const listing = await listings.create(
-      {
-        type: candidate.type,
-        title: candidate.title,
-        category: candidate.category,
-        brand: candidate.brand,
-        color: candidate.color,
-        description: candidate.description,
-        date: candidate.date,
-        location: { building: candidate.building, zone: candidate.zone },
-        images,
-        privateDetails: candidate.privateDetails,
-        createdBy: req.user._id,
-      },
-      null,
-      { includePrivate: true }
-    );
+    const images = await storeListingImages(req);
+    let listing;
+
+    try {
+      listing = await listings.create(
+        {
+          type: candidate.type,
+          title: candidate.title,
+          category: candidate.category,
+          brand: candidate.brand,
+          color: candidate.color,
+          description: candidate.description,
+          date: candidate.date,
+          location: { building: candidate.building, zone: candidate.zone },
+          images,
+          privateDetails: candidate.privateDetails,
+          createdBy: req.user._id,
+        },
+        null,
+        { includePrivate: true }
+      );
+    } catch (error) {
+      await removeListingImages(images);
+      throw error;
+    }
 
     // FR-MATCH-01: matching runs in the background and never blocks creation.
     scheduleMatchRefresh(listing);
@@ -361,10 +373,10 @@ const updateListing = async (req, res) => {
       changes.zone = body.zone ?? listing.location?.zone;
     }
 
-    const newImages = filesToImageUrls(req);
+    const newImageNames = filesToImageNames(req);
 
-    if (newImages.length > 0) {
-      changes.images = newImages;
+    if (newImageNames.length > 0) {
+      changes.images = newImageNames;
     }
 
     const merged = {
@@ -388,7 +400,26 @@ const updateListing = async (req, res) => {
       return validationFailure(res, messages);
     }
 
-    const updated = await listings.update(listing._id, changes, { includePrivate: true });
+    let storedImages = [];
+
+    if (newImageNames.length > 0) {
+      storedImages = await storeListingImages(req);
+    }
+
+    let updated;
+
+    try {
+      updated = await listings.update(listing._id, changes, { includePrivate: true });
+    } catch (error) {
+      await removeListingImages(storedImages);
+      throw error;
+    }
+
+    if (storedImages.length > 0) {
+      // The replaced photos are no longer referenced; drop them from storage.
+      const replaced = (listing.images || []).map((url) => String(url).split("/").pop());
+      await removeListingImages(replaced);
+    }
 
     // FR-MATCH-02: suggestions are recomputed after every edit, in the background.
     scheduleMatchRefresh(updated);

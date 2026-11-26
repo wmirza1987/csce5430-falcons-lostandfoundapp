@@ -1,4 +1,3 @@
-const path = require("path");
 const express = require("express");
 const cors = require("cors");
 
@@ -11,6 +10,7 @@ const messageRoutes = require("./routes/messageRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const mapRoutes = require("./routes/mapRoutes");
+const imageRoutes = require("./routes/imageRoutes");
 
 const app = express();
 
@@ -38,9 +38,6 @@ app.use(
 
 app.use(express.json({ limit: "1mb" }));
 
-// Serves uploaded listing images (see middleware/uploadMiddleware.js).
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
 const apiRouter = express.Router();
 
 apiRouter.use("/auth", authRoutes);
@@ -52,6 +49,7 @@ apiRouter.use(notificationRoutes);
 apiRouter.use(reportRoutes);
 apiRouter.use(adminRoutes);
 apiRouter.use(mapRoutes);
+apiRouter.use(imageRoutes);
 
 // Versioned API (IF-SW-01); the unversioned mount is kept as a compatibility
 // alias for existing clients and tests.

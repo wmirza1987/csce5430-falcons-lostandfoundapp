@@ -21,6 +21,9 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@azure/communication-email": "^1.1.0",
+    "@azure/identity": "^4.14.1",
+    "@azure/storage-blob": "^12.34.0",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -28,8 +31,7 @@
     "jsonwebtoken": "^9.0.2",
     "msnodesqlv8": "^6.2.2",
     "mssql": "^12.8.1",
-    "multer": "^1.4.5-lts.1",
-    "nodemailer": "^6.9.16"
+    "multer": "^1.4.5-lts.1"
   },
   "devDependencies": {
     "jest": "^29.7.0",
