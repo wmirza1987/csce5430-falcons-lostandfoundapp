@@ -1,5 +1,5 @@
-const Listing = require("../models/Listing");
-const Match = require("../models/Match");
+const listingsRepo = require("../repos/listings");
+const matchesRepo = require("../repos/matches");
 const {
   calculateMatchDetails,
   refreshMatchesForListing,
@@ -100,7 +100,7 @@ describe("Scoring components (FR-MATCH-01)", () => {
     const result = await refreshMatchesForListing(lost);
 
     expect(result.matches).toHaveLength(0);
-    expect(await Match.countDocuments({})).toBe(0);
+    expect(await matchesRepo.count()).toBe(0);
   });
 });
 
@@ -134,19 +134,20 @@ describe("Refresh and threshold (FR-MATCH-01, FR-MATCH-02)", () => {
     const lost = await createListing(owner, { type: "lost" });
     const found = await createListing(finder, { type: "found" });
     await refreshMatchesForListing(lost);
-    expect(await Match.countDocuments({})).toBe(1);
+    expect(await matchesRepo.count()).toBe(1);
 
-    found.category = "Keys";
-    found.location = { building: "Union" };
-    found.date = day("2026-11-01");
-    found.title = "Keys";
-    found.description = "Set of keys";
-    found.brand = "";
-    found.color = "";
-    await found.save();
-    await refreshMatchesForListing(found);
+    const changed = await listingsRepo.update(found._id, {
+      category: "Keys",
+      location: { building: "Union", zone: null },
+      date: day("2026-11-01"),
+      title: "Keys",
+      description: "Set of keys",
+      brand: "",
+      color: "",
+    });
+    await refreshMatchesForListing(changed);
 
-    expect(await Match.countDocuments({})).toBe(0);
+    expect(await matchesRepo.count()).toBe(0);
   });
 
   test("a deleted listing has its matches removed", async () => {
@@ -156,9 +157,9 @@ describe("Refresh and threshold (FR-MATCH-01, FR-MATCH-02)", () => {
     const found = await createListing(finder, { type: "found" });
     await refreshMatchesForListing(lost);
 
-    await Listing.updateOne({ _id: found._id }, { $set: { isDeleted: true } });
-    await refreshMatchesForListing(await Listing.findById(found._id));
+    await listingsRepo.softDelete(found._id);
+    await refreshMatchesForListing(await listingsRepo.findById(found._id));
 
-    expect(await Match.countDocuments({})).toBe(0);
+    expect(await matchesRepo.count()).toBe(0);
   });
 });

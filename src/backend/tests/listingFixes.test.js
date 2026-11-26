@@ -1,6 +1,6 @@
 const request = require("supertest");
 const app = require("../app");
-const Listing = require("../models/Listing");
+const listingsRepo = require("../repos/listings");
 const {
   authHeader,
   createListing,
@@ -60,7 +60,7 @@ describe("Phase 1 listing fixes", () => {
 
     expect(response.statusCode).toBe(200);
 
-    const stored = await Listing.findById(listing._id);
+    const stored = await listingsRepo.findById(listing._id);
     expect(stored.status).toBe("active");
   });
 

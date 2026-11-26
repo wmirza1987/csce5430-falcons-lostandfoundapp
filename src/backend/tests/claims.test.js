@@ -2,10 +2,10 @@ const fs = require("fs");
 const path = require("path");
 const request = require("supertest");
 const app = require("../app");
-const Claim = require("../models/Claim");
-const Listing = require("../models/Listing");
-const Message = require("../models/Message");
-const Notification = require("../models/Notification");
+const claimsRepo = require("../repos/claims");
+const listingsRepo = require("../repos/listings");
+const messagesRepo = require("../repos/messages");
+const notificationsRepo = require("../repos/notifications");
 const { authHeader, createListing, createMatch, createMatchedPair, createUser } = require("./helpers");
 
 const EVIDENCE_DIR = path.join(__dirname, "..", "private", "evidence");
@@ -47,7 +47,7 @@ describe("Claim submission (FR-CLM-01)", () => {
   test("evidence text is stored encrypted at rest, not as plain text", async () => {
     const setup = await createMatchedPair();
     const claim = await submittedClaim(setup);
-    const stored = await Claim.findById(claim.id).select("+explanationCiphertext");
+    const stored = await claimsRepo.findById(claim.id, { includeExplanation: true });
 
     expect(stored.explanationCiphertext).not.toContain("initials");
     expect(stored.explanationCiphertext.split(":")).toHaveLength(3);
@@ -62,7 +62,7 @@ describe("Claim submission (FR-CLM-01)", () => {
     expect(response.statusCode).toBe(201);
     expect(response.body.claim.evidence).toHaveLength(2);
 
-    const stored = await Claim.findById(response.body.claim.id).select("+evidenceImages");
+    const stored = await claimsRepo.findById(response.body.claim.id, { includeEvidence: true });
     const onDisk = fs.readFileSync(path.join(EVIDENCE_DIR, stored.evidenceImages[0].storedName));
     expect(onDisk.equals(PHOTO)).toBe(false);
   });
@@ -90,7 +90,7 @@ describe("Claim submission (FR-CLM-01)", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.body.message).toBe("Each evidence photo must be no more than 5 MB.");
-    expect(await Claim.countDocuments({})).toBe(0);
+    expect(await claimsRepo.count()).toBe(0);
   });
 
   test("UT-CLM-13: a claim with three photos is rejected", async () => {
@@ -109,7 +109,7 @@ describe("Claim submission (FR-CLM-01)", () => {
     const response = await submitClaim(unverified, setup.match);
 
     expect(response.statusCode).toBe(403);
-    expect(await Claim.countDocuments({})).toBe(0);
+    expect(await claimsRepo.count()).toBe(0);
   });
 
   test("only the owner of the lost listing can claim the match", async () => {
@@ -130,7 +130,7 @@ describe("Claim submission (FR-CLM-01)", () => {
 
   test("a claim for a match that no longer exists is refused", async () => {
     const setup = await createMatchedPair();
-    await Listing.updateOne({ _id: setup.found._id }, { $set: { isDeleted: true } });
+    await listingsRepo.softDelete(setup.found._id);
     const response = await submitClaim(setup.claimant, setup.match);
 
     expect(response.statusCode).toBe(409);
@@ -211,13 +211,13 @@ describe("Owner review (FR-CLM-02)", () => {
     expect(response.body.claim.status).toBe("approved");
     expect(response.body.listingStatus).toBe("resolved");
 
-    const listing = await Listing.findById(setup.found._id);
+    const listing = await listingsRepo.findById(setup.found._id);
     expect(listing.status).toBe("resolved");
 
-    const systemMessages = await Message.countDocuments({ claim: claim.id, kind: "system" });
+    const systemMessages = await messagesRepo.countForClaim(claim.id, { kind: "system" });
     expect(systemMessages).toBe(1);
 
-    const notice = await Notification.findOne({ user: setup.claimant._id, type: "claim_decision" });
+    const notice = (await notificationsRepo.listForUser(setup.claimant._id)).find((item) => item.type === "claim_decision");
     expect(notice.actionPath).toBe(`/messages/${claim.id}`);
   });
 
@@ -232,7 +232,7 @@ describe("Owner review (FR-CLM-02)", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body.claim.status).toBe("rejected");
-    expect((await Listing.findById(setup.found._id)).status).toBe("active");
+    expect((await listingsRepo.findById(setup.found._id)).status).toBe("active");
   });
 
   test("UT-CLM-08 and UT-CLM-14: a non-owner cannot approve, and the claim is unchanged", async () => {
@@ -246,7 +246,7 @@ describe("Owner review (FR-CLM-02)", () => {
       .send({ action: "approve" });
 
     expect(response.statusCode).toBe(403);
-    expect((await Claim.findById(claim.id)).status).toBe("pending");
+    expect((await claimsRepo.findById(claim.id)).status).toBe("pending");
   });
 
   test("UT-CLM-17: a claim cannot be approved twice", async () => {
@@ -297,15 +297,16 @@ describe("Owner review (FR-CLM-02)", () => {
       .set(authHeader(setup.finder))
       .send({ action: "approve" });
 
-    expect((await Claim.findById(competing.body.claim.id)).status).toBe("closed");
-    const closedNotice = await Notification.findOne({ user: secondClaimant._id, type: "claim_closed" });
+    expect((await claimsRepo.findById(competing.body.claim.id)).status).toBe("closed");
+    const closedNotice =
+      (await notificationsRepo.listForUser(secondClaimant._id)).find((item) => item.type === "claim_closed") || null;
     expect(closedNotice).not.toBeNull();
   });
 
   test("UT-CLM-16 and INT-20: if the thread cannot be opened, the approval is reverted and not reported", async () => {
     const setup = await createMatchedPair();
     const claim = await submittedClaim(setup);
-    const spy = jest.spyOn(Message, "create").mockRejectedValueOnce(new Error("database unavailable"));
+    const spy = jest.spyOn(messagesRepo, "create").mockRejectedValueOnce(new Error("database unavailable"));
 
     const response = await request(app)
       .patch(`/api/v1/claims/${claim.id}/decision`)
@@ -315,9 +316,9 @@ describe("Owner review (FR-CLM-02)", () => {
     spy.mockRestore();
 
     expect(response.statusCode).toBe(500);
-    expect((await Claim.findById(claim.id)).status).toBe("pending");
-    expect((await Listing.findById(setup.found._id)).status).toBe("active");
-    expect(await Message.countDocuments({ claim: claim.id })).toBe(0);
+    expect((await claimsRepo.findById(claim.id)).status).toBe("pending");
+    expect((await listingsRepo.findById(setup.found._id)).status).toBe("active");
+    expect(await messagesRepo.countForClaim(claim.id)).toBe(0);
   });
 
   test("a rejected claimant cannot resubmit for the same match", async () => {

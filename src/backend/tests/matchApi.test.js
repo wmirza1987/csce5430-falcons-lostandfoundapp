@@ -1,6 +1,7 @@
 const request = require("supertest");
 const app = require("../app");
-const Match = require("../models/Match");
+const matchesRepo = require("../repos/matches");
+const notificationsRepo = require("../repos/notifications");
 const {
   waitForPendingMatchJobs,
 } = require("../services/matchingService");
@@ -95,10 +96,9 @@ describe("Match API (FR-MATCH-02, FR-MATCH-03)", () => {
 
     await waitForPendingMatchJobs();
 
-    expect(await Match.countDocuments({})).toBe(1);
+    expect(await matchesRepo.count()).toBe(1);
 
-    const Notification = require("../models/Notification");
-    expect(await Notification.countDocuments({ user: lostOwner._id, type: "match" })).toBe(1);
-    expect(await Notification.countDocuments({ user: finder._id, type: "match" })).toBe(1);
+    expect(await notificationsRepo.countForUser(lostOwner._id, "match")).toBe(1);
+    expect(await notificationsRepo.countForUser(finder._id, "match")).toBe(1);
   });
 });

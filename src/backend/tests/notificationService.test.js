@@ -8,8 +8,8 @@ jest.mock("../services/emailService", () => ({
 
 const request = require("supertest");
 const app = require("../app");
-const Notification = require("../models/Notification");
-const User = require("../models/User");
+const notificationsRepo = require("../repos/notifications");
+const usersRepo = require("../repos/users");
 const emailService = require("../services/emailService");
 const {
   createNotification,
@@ -34,7 +34,7 @@ describe("In-app and email notifications (FR-NOTIF-01)", () => {
     const notice = await createNotification({ userId: user._id, type: "match", message: "Possible match" });
 
     expect(notice).not.toBeNull();
-    expect(await Notification.countDocuments({ user: user._id })).toBe(1);
+    expect(await notificationsRepo.countForUser(user._id)).toBe(1);
     expect(emailService.sendNotificationEmail).not.toHaveBeenCalled();
   });
 
@@ -51,13 +51,13 @@ describe("In-app and email notifications (FR-NOTIF-01)", () => {
     const sent = emailService.sendNotificationEmail.mock.calls[0][0];
     expect(sent.to).toBe(user.email);
     expect(sent.text).toContain("/matches/abc/claim");
-    expect((await Notification.findById(notice._id)).emailStatus).toBe("sent");
+    expect((await notificationsRepo.findById(notice._id)).emailStatus).toBe("sent");
   });
 
   test("UT-NOTIF-04 and UT-PRIV-09: the owner is emailed about a claim without the evidence text", async () => {
     const setup = await createMatchedPair();
-    await User.updateOne({ _id: setup.finder._id }, { $set: { emailNotifications: true } });
-    const claimStub = { _id: "64b000000000000000000001" };
+    await usersRepo.setEmailNotifications(setup.finder._id, true);
+    const claimStub = { _id: "64b00000-0000-4000-8000-000000000001" };
 
     await notifyNewClaim(claimStub, setup.found);
 
@@ -79,7 +79,7 @@ describe("In-app and email notifications (FR-NOTIF-01)", () => {
     const user = await createUser({ emailNotifications: true });
     const notice = await createNotification({ userId: user._id, type: "claim", message: "New claim" });
 
-    const stored = await Notification.findById(notice._id);
+    const stored = await notificationsRepo.findById(notice._id);
     expect(stored.emailStatus).toBe("failed");
     expect(stored.emailAttempts).toBe(1);
   });
@@ -91,7 +91,7 @@ describe("In-app and email notifications (FR-NOTIF-01)", () => {
     const notice = await createNotification({ userId: user._id, type: "claim", message: "New claim" });
 
     expect(notice).not.toBeNull();
-    expect((await Notification.findById(notice._id)).emailStatus).toBe("failed");
+    expect((await notificationsRepo.findById(notice._id)).emailStatus).toBe("failed");
   });
 
   test("UT-NOTIF-09: failed emails are retried and marked sent once delivered", async () => {
@@ -102,7 +102,7 @@ describe("In-app and email notifications (FR-NOTIF-01)", () => {
     const result = await retryFailedEmails();
 
     expect(result.retried).toBe(1);
-    expect((await Notification.findById(notice._id)).emailStatus).toBe("sent");
+    expect((await notificationsRepo.findById(notice._id)).emailStatus).toBe("sent");
   });
 
   test("no SMTP configuration records the email as skipped", async () => {
@@ -110,7 +110,7 @@ describe("In-app and email notifications (FR-NOTIF-01)", () => {
     const user = await createUser({ emailNotifications: true });
     const notice = await createNotification({ userId: user._id, type: "claim", message: "New claim" });
 
-    expect((await Notification.findById(notice._id)).emailStatus).toBe("skipped");
+    expect((await notificationsRepo.findById(notice._id)).emailStatus).toBe("skipped");
   });
 });
 
@@ -134,7 +134,7 @@ describe("Notification privacy (FR-NOTIF-02, NFR-PRIV-01)", () => {
 
     await notifyPotentialMatch({ match: setup.match, lostListing: setup.lost, foundListing: setup.found });
 
-    const notices = await Notification.find({}).select("+emailBody").lean();
+    const notices = await notificationsRepo.listAll({ includeEmail: true });
     for (const notice of notices) {
       expect(notice.message).not.toContain("Engraved initials");
       expect(notice.emailBody).not.toContain("Engraved initials");
@@ -151,7 +151,7 @@ describe("Notification feed", () => {
     expect(feed).toHaveLength(1);
 
     await markNotificationRead(notice._id, user._id);
-    expect((await Notification.findById(notice._id)).isRead).toBe(true);
+    expect((await notificationsRepo.findById(notice._id)).isRead).toBe(true);
   });
 
   test("the notification endpoint returns only the caller's notifications", async () => {
