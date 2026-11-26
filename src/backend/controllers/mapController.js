@@ -2,12 +2,10 @@
 // catalog. Only approximate building coordinates are returned; no live or
 // precise location is stored or exposed. The same endpoint powers the required
 // list-based navigation alternative.
-const Listing = require("../models/Listing");
+const listingsRepo = require("../repos/listings");
 const { findBuilding, listBuildings, listZones } = require("../services/campusService");
+const { queryString } = require("../services/validation");
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 async function buildings(req, res) {
   try {
@@ -26,32 +24,34 @@ async function buildings(req, res) {
 // building, zone, and type, and a `view=list` flag used by the list view.
 async function pins(req, res) {
   try {
-    const { building, zone, type, status = "active", view } = req.query;
+    const values = {};
 
-    // Hidden and deleted listings never appear on the public map.
-    const query = { isDeleted: false, isHidden: { $ne: true } };
+    for (const name of ["building", "zone", "type", "status", "view"]) {
+      const result = queryString(req.query[name]);
 
-    if (["active", "resolved"].includes(status)) {
-      query.status = status;
+      if (result.error) {
+        return res.status(400).json({
+          message: `Query parameter ${name} must be a single text value.`,
+        });
+      }
+
+      values[name] = result.value;
     }
 
-    if (["lost", "found"].includes(type)) {
-      query.type = type;
-    }
+    const { building, zone, type, view } = values;
+    const status = req.query.status === undefined ? "active" : values.status;
 
-    if (building) {
-      query["location.building"] = { $regex: new RegExp(`^${escapeRegExp(building)}$`, "i") };
-    }
-
-    if (zone) {
-      query["location.zone"] = { $regex: new RegExp(`^${escapeRegExp(zone)}$`, "i") };
-    }
-
-    const listings = await Listing.find(query)
-      .select("title type category location createdAt")
-      .sort({ createdAt: -1 })
-      .limit(200)
-      .lean();
+    // Hidden and deleted listings never appear on the public map; the
+    // repository applies that filter.
+    const listings = await listingsRepo.listForMap(
+      {
+        status: ["active", "resolved"].includes(status) ? status : "",
+        type: ["lost", "found"].includes(type) ? type : "",
+        building,
+        zone,
+      },
+      { limit: 200 }
+    );
 
     const pins = [];
     const unplotted = [];
