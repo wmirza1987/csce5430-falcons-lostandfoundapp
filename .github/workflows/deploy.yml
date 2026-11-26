@@ -35,7 +35,6 @@ jobs:
       DB_NAME_TEST: lostfound_test
       DB_TRUST_CERT: "true"
       JWT_SECRET: ci-only-jwt-secret
-      EVIDENCE_ENCRYPTION_KEY: ci-only-evidence-key
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
