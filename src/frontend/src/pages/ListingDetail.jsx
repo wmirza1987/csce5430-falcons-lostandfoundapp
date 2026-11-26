@@ -220,7 +220,7 @@ function ListingDetail() {
           <button type="button" onClick={() => navigate(`/listings/${listing._id}/edit`)}>
             Edit
           </button>{" "}
-          <button type="button" onClick={handleDelete} disabled={busy}>
+          <button type="button" className="danger" onClick={handleDelete} disabled={busy}>
             Delete
           </button>
         </div>
