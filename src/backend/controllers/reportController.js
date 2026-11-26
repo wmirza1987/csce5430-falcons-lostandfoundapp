@@ -11,7 +11,7 @@ function handleError(res, error, context) {
     return res.status(error.status).json({ message: error.message });
   }
 
-  if (error.name === "CastError") {
+  if (error.name === "InvalidIdError") {
     return res.status(400).json({ message: "Invalid id." });
   }
 

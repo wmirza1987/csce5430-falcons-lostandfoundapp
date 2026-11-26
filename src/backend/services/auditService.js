@@ -1,4 +1,4 @@
-const AuditLog = require("../models/AuditLog");
+const auditLogsRepo = require("../repos/auditLogs");
 
 // FR-ADM-02 / FR-COM-02: every privileged action writes a non-content audit
 // record. Callers pass IDs and a short reason, never message bodies, claim
@@ -26,14 +26,18 @@ function safeDetail(value) {
     .slice(0, 300);
 }
 
-async function recordAudit({ actor, action, targetType, targetId = null, detail = "" }) {
-  return AuditLog.create({
-    actor,
-    action,
-    targetType,
-    targetId,
-    detail: safeDetail(detail),
-  });
+// Pass a transaction to make the audit record part of the same unit of work.
+async function recordAudit({ actor, action, targetType, targetId = null, detail = "" }, tx) {
+  return auditLogsRepo.create(
+    {
+      actor,
+      action: String(action).slice(0, 80),
+      targetType: String(targetType).slice(0, 40),
+      targetId,
+      detail: safeDetail(detail),
+    },
+    tx
+  );
 }
 
 module.exports = { ACTIONS, recordAudit, safeDetail };

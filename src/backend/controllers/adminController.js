@@ -9,17 +9,18 @@ const {
   updateCategory,
 } = require("../services/adminService");
 const { getDashboardAnalytics } = require("../services/analyticsService");
+const { isUniqueViolation } = require("../repos/util");
 
 function handleError(res, error, context) {
   if (error instanceof AdminError) {
     return res.status(error.status).json({ message: error.message });
   }
 
-  if (error?.code === 11000) {
+  if (isUniqueViolation(error)) {
     return res.status(409).json({ message: "That category already exists." });
   }
 
-  if (error.name === "CastError") {
+  if (error.name === "InvalidIdError") {
     return res.status(400).json({ message: "Invalid id." });
   }
 
