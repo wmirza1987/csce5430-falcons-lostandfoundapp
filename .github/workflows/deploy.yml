@@ -3,6 +3,8 @@ name: Build and deploy to Azure
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -48,17 +50,14 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Create test database
         working-directory: src/backend
-        run: |
-          for i in $(seq 1 30); do
-            node -e "const sql=require('mssql');sql.connect({server:'localhost',user:'sa',password:process.env.DB_PASSWORD,options:{trustServerCertificate:true}}).then(p=>p.query('IF DB_ID('lostfound_test') IS NULL CREATE DATABASE lostfound_test')).then(()=>process.exit(0)).catch(()=>process.exit(1))" && break
-            sleep 3
-          done
+        run: node scripts/ci-create-test-db.js
       - name: Run backend tests
         working-directory: src/backend
         run: pnpm test
 
   build:
     needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -93,6 +92,7 @@ jobs:
 
   deploy:
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment: production
     steps:
