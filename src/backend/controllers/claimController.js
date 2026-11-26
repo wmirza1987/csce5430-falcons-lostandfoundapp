@@ -107,9 +107,9 @@ function claimView(claim, { listing = null, claimant = null, includeOwnerDetails
   return view;
 }
 
-function removeStoredEvidence(images) {
+async function removeStoredEvidence(images) {
   for (const image of images) {
-    deleteEncryptedFile(image.storedName);
+    await deleteEncryptedFile(image.storedName);
   }
 }
 
@@ -172,7 +172,7 @@ async function submitClaim(req, res) {
     }
 
     for (const file of req.files || []) {
-      savedImages.push(saveEncryptedFile(file.buffer, file.mimetype));
+      savedImages.push(await saveEncryptedFile(file.buffer, file.mimetype));
     }
 
     const claim = await claimsRepo.create({
@@ -194,7 +194,7 @@ async function submitClaim(req, res) {
       ),
     });
   } catch (error) {
-    removeStoredEvidence(savedImages);
+    await removeStoredEvidence(savedImages);
 
     logError("Unable to submit claim", error);
     return res.status(500).json({ message: "Unable to submit claim." });
@@ -338,10 +338,11 @@ async function getEvidenceImage(req, res) {
       return res.status(404).json({ message: "Evidence not found." });
     }
 
-    const bytes = readEncryptedFile(image);
+    const bytes = await readEncryptedFile(image);
 
     res.set("Content-Type", image.mimeType);
     res.set("Cache-Control", "private, no-store");
+    res.set("X-Content-Type-Options", "nosniff");
     return res.status(200).send(bytes);
   } catch (error) {
     logError("Unable to open evidence", error);

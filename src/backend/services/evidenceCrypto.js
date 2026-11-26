@@ -1,32 +1,50 @@
 // Encryption at rest for claim evidence (FR-CLM-01, NFR-PRIV-01).
 // AES-256-GCM with a random 96-bit IV per value. The key comes from
-// EVIDENCE_ENCRYPTION_KEY (64 hex characters or 32 base64 bytes). If that is
-// not set, a development key is derived from JWT_SECRET so the app still runs
-// locally; deployments should set a dedicated key.
+// EVIDENCE_ENCRYPTION_KEY (64 hex characters or 32 base64 bytes). In production
+// the key is required and the app refuses to start without it. Outside
+// production a development key is derived from JWT_SECRET so local runs and
+// tests work without extra setup.
 const crypto = require("crypto");
-const fs = require("fs");
-const path = require("path");
+const storage = require("./storage");
 
 const ALGORITHM = "aes-256-gcm";
-const PRIVATE_DIR = path.join(__dirname, "..", "private", "evidence");
-
-fs.mkdirSync(PRIVATE_DIR, { recursive: true });
+const CONTAINER_KEY = "evidence";
 
 let warnedAboutDerivedKey = false;
+
+function parseKey(configured) {
+  const key = /^[0-9a-fA-F]{64}$/.test(configured)
+    ? Buffer.from(configured, "hex")
+    : Buffer.from(configured, "base64");
+
+  if (key.length !== 32) {
+    throw new Error("EVIDENCE_ENCRYPTION_KEY must decode to 32 bytes.");
+  }
+
+  return key;
+}
+
+// Throws when the configuration is unusable. Called at import time so a
+// production deployment without a key fails at startup, not on first upload.
+function assertEvidenceKeyConfigured() {
+  if (process.env.NODE_ENV === "production" && !process.env.EVIDENCE_ENCRYPTION_KEY) {
+    throw new Error("EVIDENCE_ENCRYPTION_KEY must be set in production.");
+  }
+
+  if (process.env.EVIDENCE_ENCRYPTION_KEY) {
+    parseKey(process.env.EVIDENCE_ENCRYPTION_KEY);
+  }
+}
 
 function getKey() {
   const configured = process.env.EVIDENCE_ENCRYPTION_KEY;
 
   if (configured) {
-    const key = /^[0-9a-fA-F]{64}$/.test(configured)
-      ? Buffer.from(configured, "hex")
-      : Buffer.from(configured, "base64");
+    return parseKey(configured);
+  }
 
-    if (key.length !== 32) {
-      throw new Error("EVIDENCE_ENCRYPTION_KEY must decode to 32 bytes.");
-    }
-
-    return key;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("EVIDENCE_ENCRYPTION_KEY must be set in production.");
   }
 
   if (!process.env.JWT_SECRET) {
@@ -35,7 +53,7 @@ function getKey() {
 
   if (!warnedAboutDerivedKey) {
     console.warn(
-      "EVIDENCE_ENCRYPTION_KEY is not set; deriving the evidence key from JWT_SECRET."
+      "EVIDENCE_ENCRYPTION_KEY is not set; deriving a development key from JWT_SECRET."
     );
     warnedAboutDerivedKey = true;
   }
@@ -87,13 +105,14 @@ function decryptText(payload) {
   ).toString("utf8");
 }
 
-// Writes an encrypted file into the private evidence folder, which is never
-// served statically. Returns the metadata needed to read it back.
-function saveEncryptedFile(plain, mimeType) {
+// Encrypts the file and writes the ciphertext to the private evidence
+// container under a random name (no extension). Returns the metadata needed to
+// read it back.
+async function saveEncryptedFile(plain, mimeType) {
   const { ciphertext, iv, authTag } = encryptBuffer(plain);
-  const storedName = `${crypto.randomBytes(16).toString("hex")}.bin`;
+  const storedName = crypto.randomUUID();
 
-  fs.writeFileSync(path.join(PRIVATE_DIR, storedName), ciphertext, { mode: 0o600 });
+  await storage.put(CONTAINER_KEY, storedName, ciphertext, "application/octet-stream");
 
   return {
     storedName,
@@ -104,22 +123,28 @@ function saveEncryptedFile(plain, mimeType) {
   };
 }
 
-function readEncryptedFile(image) {
-  const ciphertext = fs.readFileSync(path.join(PRIVATE_DIR, image.storedName));
-  return decryptBuffer(ciphertext, image.iv, image.authTag);
+async function readEncryptedFile(image) {
+  const blob = await storage.get(CONTAINER_KEY, image.storedName);
+
+  if (!blob) {
+    throw new Error("Evidence file is missing from storage.");
+  }
+
+  return decryptBuffer(blob.buffer, image.iv, image.authTag);
 }
 
-function deleteEncryptedFile(storedName) {
+async function deleteEncryptedFile(storedName) {
   try {
-    fs.unlinkSync(path.join(PRIVATE_DIR, storedName));
+    await storage.remove(CONTAINER_KEY, storedName);
   } catch (error) {
-    if (error.code !== "ENOENT") {
-      console.error(`Unable to remove evidence file: ${error.message}`);
-    }
+    console.error(`Unable to remove evidence file: ${error.message}`);
   }
 }
 
+assertEvidenceKeyConfigured();
+
 module.exports = {
+  assertEvidenceKeyConfigured,
   decryptText,
   deleteEncryptedFile,
   encryptText,
