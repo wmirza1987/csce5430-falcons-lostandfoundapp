@@ -32,9 +32,6 @@ importers:
       jsonwebtoken:
         specifier: ^9.0.2
         version: 9.0.3
-      msnodesqlv8:
-        specifier: ^6.2.2
-        version: 6.2.2
       mssql:
         specifier: ^12.8.1
         version: 12.8.1
@@ -51,6 +48,10 @@ importers:
       supertest:
         specifier: ^6.3.4
         version: 6.3.4
+    optionalDependencies:
+      msnodesqlv8:
+        specifier: ^6.2.2
+        version: 6.2.2
 
 packages:
 
@@ -3944,6 +3945,7 @@ snapshots:
     dependencies:
       node-addon-api: 8.9.2
       node-gyp-build: 4.8.4
+    optional: true
 
   mssql@12.8.1:
     dependencies:
@@ -3975,13 +3977,15 @@ snapshots:
 
   node-addon-api@5.1.0: {}
 
-  node-addon-api@8.9.2: {}
+  node-addon-api@8.9.2:
+    optional: true
 
   node-fetch@2.7.0:
     dependencies:
       whatwg-url: 5.0.0
 
-  node-gyp-build@4.8.4: {}
+  node-gyp-build@4.8.4:
+    optional: true
 
   node-int64@0.4.0: {}
 

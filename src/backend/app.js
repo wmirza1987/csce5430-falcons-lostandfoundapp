@@ -66,6 +66,16 @@ function healthCheck(req, res) {
 app.get("/api/health", healthCheck);
 app.get("/api/v1/health", healthCheck);
 
+// Production: the API also serves the built React client (same origin, no CORS).
+const clientDir = path.join(__dirname, "public");
+
+if (fs.existsSync(path.join(clientDir, "index.html"))) {
+  app.use(express.static(clientDir, { index: false, maxAge: "1h" }));
+  app.get(/^\/(?!api(\/|$)).*/, (req, res) => {
+    res.sendFile(path.join(clientDir, "index.html"));
+  });
+}
+
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found." });
 });

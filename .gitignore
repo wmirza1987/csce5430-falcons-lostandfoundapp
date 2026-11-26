@@ -21,3 +21,4 @@ src/backend/private/
 
 # encrypted claim evidence (NFR-PRIV) - never commit
 **/private/
+public/
