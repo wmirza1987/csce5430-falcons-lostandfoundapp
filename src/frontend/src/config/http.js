@@ -16,7 +16,16 @@ export function readStoredUser() {
 export function formatDate(value) {
   if (!value) return "Not specified";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Not specified" : date.toLocaleDateString();
+
+  if (Number.isNaN(date.getTime())) {
+    return "Not specified";
+  }
+
+  // Listing dates are calendar dates stored at UTC midnight. Showing them in the
+  // viewer's time zone would move them back a day for anyone west of UTC.
+  const isCalendarDate = /^\d{4}-\d{2}-\d{2}(T00:00:00(\.0+)?Z)?$/.test(String(value));
+
+  return isCalendarDate ? date.toLocaleDateString(undefined, { timeZone: "UTC" }) : date.toLocaleDateString();
 }
 
 export function formatDateTime(value) {
