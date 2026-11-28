@@ -1,0 +1,42 @@
+TEAM FALCONS - DELIVERABLE 5 - NOTE ON SUBMITTED FILES
+Lost and Found for Campus, CSCE 5430, Software Engineering, Fall 2026
+
+This file lists the name and repository location of every file submitted for
+Deliverable 5 (Phase 3). It is placed at the top level of the repository.
+
+1. Deliverable 5 report (requirements, UML design, coding and AI usage
+   disclosure, test cases, user manual, compilation and run instructions,
+   ending feature summary, reflection, member contribution table)
+   Files: Team Falcons - Deliverable 5.docx
+          Team Falcons - Deliverable 5.pdf
+   Location: /reports/deliverable-5/
+
+2. UML diagrams used in the report (class, sequence, use case)
+   Files: class-diagram.png, sequence-diagram.png, use-case-diagram.png
+   Location: /reports/deliverable-5/diagrams/
+
+3. Appendix A, Phase 1 and 2 test case traceability (104 cases)
+   File: D5 Appendix A Test Catalog.docx
+   Location: /reports/deliverable-5/
+   Also: /docs/test-traceability.md
+
+4. User manual (complete, illustrated)
+   File: D5 User Manual.docx
+   Location: /reports/deliverable-5/   (copy also in /docs/)
+
+5. Source code (Phase 3, final system)
+   Backend: /src/backend   (Express 5 API, Azure SQL repositories, Jest tests)
+   Frontend: /src/frontend (React and Vite client)
+   Continuous integration and deployment: /.github/workflows/deploy.yml
+   Azure resources: /docs/azure-resources.md
+   Compilation and run instructions: report Section 6 and /README.md
+
+6. Phase 3 audit and implementation notes
+   File: Deliverable-5-Audit-and-Changes.md
+   Location: /reports/deliverable-5/
+
+7. Updated meeting minutes
+   Location: /meeting-minutes/deliverable-5/
+
+8. Live application
+   https://lfcampus-api-s2iv1.azurewebsites.net
