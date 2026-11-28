@@ -134,6 +134,8 @@ pnpm install
 
 Copy `src/backend/.env.example` to `src/backend/.env` and `src/frontend/.env.example` to `src/frontend/.env`. Never commit `.env`. The example files list every setting with no real values. Key settings: `DB_SERVER`, `DB_NAME`, `DB_AUTH` (`aad` for Azure, `windows` or `sql` for a local SQL Server), `DB_NAME_TEST`, `JWT_SECRET`, `EVIDENCE_ENCRYPTION_KEY`, `STORAGE_ACCOUNT_NAME`, `ACS_ENDPOINT`, `EMAIL_FROM`, `APP_BASE_URL`, `CLIENT_ORIGIN`, `MATCH_THRESHOLD`.
 
+Create two empty databases first (for example `lostfound` and `lostfound_test`). `EVIDENCE_ENCRYPTION_KEY` must be 64 hex characters; generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. `JWT_SECRET` can be any long random text. For the built site served by the API, build `src/frontend` and copy its `dist` folder to `src/backend/public`, then set `CLIENT_ORIGIN=http://localhost:5000`.
+
 When `STORAGE_ACCOUNT_NAME` is unset the API stores files under `.local-storage/`, and when `ACS_ENDPOINT` is unset email delivery is skipped (notifications are still created in-app).
 
 ### Running Locally
